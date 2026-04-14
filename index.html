@@ -381,8 +381,8 @@ startBtn.addEventListener('click', async () => {
 downloadBtn.addEventListener('click', () => {
   const link = document.createElement('a');
   const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-  link.download = `blurred_${ts}.png`;
-  link.href = resultCanvas.toDataURL('image/png');
+  link.download = `blurred_${ts}.jpg`;
+  link.href = resultCanvas.toDataURL('image/jpeg', 0.92);
   link.click();
 });
 
