@@ -166,7 +166,7 @@ async function loadModels() {
           delegate: 'GPU'
         },
         runningMode: 'IMAGE',
-        minDetectionConfidence: 0.08
+        minDetectionConfidence: 0.5
       });
       console.log('[Engine1] MediaPipe ready');
     } catch (e) {
@@ -180,7 +180,7 @@ async function loadModels() {
             delegate: 'CPU'
           },
           runningMode: 'IMAGE',
-          minDetectionConfidence: 0.08
+          minDetectionConfidence: 0.5
         });
         console.log('[Engine1] MediaPipe ready (CPU)');
       } catch (e2) {
@@ -231,7 +231,7 @@ async function detectFaces(img) {
   // Engine 2: face-api.js (more robust for diverse face types)
   if (fapiReady) {
     try {
-      const detections = await faceapi.detectAllFaces(img, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.15 }));
+      const detections = await faceapi.detectAllFaces(img, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.5 }));
       for (const d of detections) {
         allBoxes.push({ x: d.box.x, y: d.box.y, w: d.box.width, h: d.box.height, score: d.score, engine: 'FA' });
       }
@@ -304,7 +304,26 @@ startBtn.addEventListener('click', async () => {
   await new Promise(r => setTimeout(r, 60));
 
   try {
-    const boxes = await detectFaces(currentImage);
+    const maxSize = 1024;
+    let scale = 1;
+    let detectImg = currentImage;
+    if (currentImage.naturalWidth > maxSize || currentImage.naturalHeight > maxSize) {
+      scale = Math.max(currentImage.naturalWidth / maxSize, currentImage.naturalHeight / maxSize);
+      const tmpCanvas = document.createElement('canvas');
+      tmpCanvas.width = currentImage.naturalWidth / scale;
+      tmpCanvas.height = currentImage.naturalHeight / scale;
+      const tCtx = tmpCanvas.getContext('2d');
+      tCtx.drawImage(currentImage, 0, 0, tmpCanvas.width, tmpCanvas.height);
+      detectImg = tmpCanvas;
+    }
+
+    const boxes = await detectFaces(detectImg);
+    // Map bounding boxes back to original image scale
+    if (scale !== 1) {
+      for (const box of boxes) {
+        box.x *= scale; box.y *= scale; box.w *= scale; box.h *= scale;
+      }
+    }
     const count = boxes.length;
     faceBadge.textContent = count > 0 ? `${count} 张人脸` : '';
 
@@ -339,7 +358,10 @@ startBtn.addEventListener('click', async () => {
       ctx.ellipse(bx + bw / 2, by + bh / 2, bw / 2, bh / 2, 0, 0, Math.PI * 2);
       ctx.clip();
       ctx.filter = `blur(${blurPx}px)`;
-      for (let j = 0; j < 3; j++) ctx.drawImage(currentImage, 0, 0, canvas.width, canvas.height);
+      // 性能优化：模糊滤镜下只重绘含有人脸的小区域，而不是整张4K大图
+      for (let j = 0; j < 5; j++) {
+        ctx.drawImage(currentImage, bx, by, bw, bh, bx, by, bw, bh);
+      }
       ctx.filter = 'none';
       ctx.restore();
     }
