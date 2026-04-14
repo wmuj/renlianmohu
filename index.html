@@ -1,0 +1,963 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FaceBlur · 人脸模糊隐私保护工具</title>
+<meta name="description" content="本地运行的人脸模糊工具，完全保护隐私，无需上传，无限次使用。支持拖拽上传、多种模糊模式。">
+<meta name="keywords" content="人脸模糊,隐私保护,face blur,本地处理">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0a0b12;
+    --bg2: #0e1019;
+    --surface: rgba(22, 25, 38, 0.75);
+    --surface-solid: #161926;
+    --surface2: #1e2235;
+    --border: rgba(255,255,255,0.06);
+    --border-hover: rgba(255,255,255,0.12);
+    --glass-border: rgba(255,255,255,0.08);
+    --accent: #6366f1;
+    --accent-light: #818cf8;
+    --accent-glow: rgba(99,102,241,0.15);
+    --accent-glow2: rgba(99,102,241,0.25);
+    --text: #eef0f6;
+    --text2: #c8cce0;
+    --muted: #6b7094;
+    --success: #34d399;
+    --success-bg: rgba(52,211,153,0.08);
+    --warn: #fbbf24;
+    --warn-bg: rgba(251,191,36,0.08);
+    --danger: #f87171;
+    --danger-bg: rgba(248,113,113,0.08);
+    --radius: 16px;
+    --radius-sm: 10px;
+    --radius-xs: 6px;
+    --shadow: 0 4px 24px rgba(0,0,0,0.3);
+    --shadow-lg: 0 8px 48px rgba(0,0,0,0.4);
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Inter', -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+    position: relative;
+  }
+
+  /* === Animated Background === */
+  .bg-grid {
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(99,102,241,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(99,102,241,0.03) 1px, transparent 1px);
+    background-size: 60px 60px;
+    pointer-events: none;
+    z-index: 0;
+  }
+  .bg-glow {
+    position: fixed;
+    width: 600px; height: 600px;
+    border-radius: 50%;
+    filter: blur(120px);
+    opacity: 0.08;
+    pointer-events: none;
+    z-index: 0;
+    animation: floatGlow 20s ease-in-out infinite;
+  }
+  .bg-glow-1 {
+    background: #6366f1;
+    top: -200px; left: -100px;
+  }
+  .bg-glow-2 {
+    background: #8b5cf6;
+    bottom: -200px; right: -100px;
+    animation-delay: -10s;
+  }
+  @keyframes floatGlow {
+    0%, 100% { transform: translate(0, 0); }
+    33% { transform: translate(40px, 30px); }
+    66% { transform: translate(-30px, 20px); }
+  }
+
+  /* === Layout === */
+  .app-wrapper {
+    position: relative;
+    z-index: 1;
+    padding: 2rem 1.5rem;
+    max-width: 920px;
+    margin: 0 auto;
+  }
+
+  /* === Header === */
+  .header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 2.5rem;
+    animation: fadeInDown 0.6s ease-out;
+  }
+  @keyframes fadeInDown {
+    from { opacity: 0; transform: translateY(-16px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .logo {
+    width: 52px; height: 52px;
+    background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #a78bfa 100%);
+    border-radius: 14px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 24px;
+    flex-shrink: 0;
+    box-shadow: 0 0 24px rgba(99,102,241,0.3);
+    position: relative;
+  }
+  .logo::after {
+    content: '';
+    position: absolute;
+    inset: -2px;
+    border-radius: 16px;
+    background: linear-gradient(135deg, rgba(99,102,241,0.4), transparent, rgba(139,92,246,0.4));
+    z-index: -1;
+    filter: blur(4px);
+  }
+  .header-info h1 {
+    font-size: 24px;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+    background: linear-gradient(90deg, #eef0f6, #a5b4fc);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .header-info p {
+    font-size: 13px;
+    color: var(--muted);
+    margin-top: 3px;
+    letter-spacing: 0.2px;
+  }
+  .header-badge {
+    margin-left: auto;
+    font-size: 12px;
+    padding: 6px 14px;
+    border-radius: 24px;
+    background: var(--success-bg);
+    color: var(--success);
+    border: 1px solid rgba(52,211,153,0.2);
+    white-space: nowrap;
+    font-weight: 500;
+    display: flex; align-items: center; gap: 5px;
+    backdrop-filter: blur(8px);
+  }
+  .pulse-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--success);
+    animation: pulse 2s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 0.4; transform: scale(0.8); }
+    50% { opacity: 1; transform: scale(1.2); }
+  }
+
+  /* === Glass Card === */
+  .glass-card {
+    background: var(--surface);
+    backdrop-filter: blur(20px);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    transition: all 0.3s ease;
+  }
+  .glass-card:hover {
+    border-color: var(--border-hover);
+  }
+
+  /* === Upload Zone === */
+  .upload-zone {
+    padding: 4rem 2rem;
+    text-align: center;
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+    animation: fadeIn 0.5s ease-out 0.1s both;
+  }
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .upload-zone::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border: 2px dashed rgba(99,102,241,0.2);
+    border-radius: var(--radius);
+    transition: all 0.3s ease;
+    pointer-events: none;
+  }
+  .upload-zone:hover::before,
+  .upload-zone.drag-over::before {
+    border-color: var(--accent);
+    background: rgba(99,102,241,0.04);
+  }
+  .upload-zone input[type="file"] {
+    position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
+  }
+  .upload-visual {
+    width: 80px; height: 80px;
+    margin: 0 auto 1.2rem;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--accent-glow), var(--accent-glow2));
+    display: flex; align-items: center; justify-content: center;
+    font-size: 32px;
+    position: relative;
+  }
+  .upload-visual::after {
+    content: '';
+    position: absolute;
+    inset: -4px;
+    border-radius: 50%;
+    border: 2px dashed rgba(99,102,241,0.3);
+    animation: rotateBorder 12s linear infinite;
+  }
+  @keyframes rotateBorder {
+    to { transform: rotate(360deg); }
+  }
+  .upload-zone h3 {
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 6px;
+    color: var(--text);
+  }
+  .upload-zone .sub-text {
+    font-size: 13px;
+    color: var(--muted);
+    margin-bottom: 1.2rem;
+  }
+  .upload-trigger {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 24px;
+    background: linear-gradient(135deg, var(--accent), #8b5cf6);
+    color: white;
+    border-radius: var(--radius-sm);
+    font-size: 13px;
+    font-weight: 600;
+    pointer-events: none;
+    box-shadow: 0 4px 16px rgba(99,102,241,0.3);
+    transition: transform 0.2s;
+  }
+  .upload-zone:hover .upload-trigger {
+    transform: translateY(-1px);
+  }
+
+  /* === Settings Panel === */
+  .settings-panel {
+    margin-top: 1.2rem;
+    padding: 1.6rem;
+    animation: fadeIn 0.5s ease-out 0.2s both;
+  }
+  .panel-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    color: var(--muted);
+    margin-bottom: 1.4rem;
+    font-weight: 600;
+  }
+  .panel-header::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: linear-gradient(90deg, var(--border), transparent);
+    margin-left: 8px;
+  }
+  .settings-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.4rem;
+  }
+  @media (max-width: 560px) { .settings-grid { grid-template-columns: 1fr; } }
+  .field label {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 13px;
+    color: var(--text2);
+    margin-bottom: 10px;
+    font-weight: 500;
+  }
+  .value-tag {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--accent-light);
+    background: var(--accent-glow);
+    border-radius: var(--radius-xs);
+    padding: 2px 10px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Custom Range Slider */
+  input[type="range"] {
+    width: 100%;
+    height: 6px;
+    appearance: none;
+    background: var(--surface2);
+    border-radius: 6px;
+    outline: none;
+    cursor: pointer;
+    position: relative;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    appearance: none;
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+    box-shadow: 0 0 0 4px var(--accent-glow), 0 2px 8px rgba(0,0,0,0.3);
+    transition: box-shadow 0.2s;
+  }
+  input[type="range"]::-webkit-slider-thumb:hover {
+    box-shadow: 0 0 0 6px var(--accent-glow2), 0 2px 12px rgba(0,0,0,0.4);
+  }
+
+  /* Shape Buttons */
+  .shape-selector {
+    display: flex;
+    gap: 8px;
+  }
+  .shape-btn {
+    flex: 1;
+    padding: 9px 6px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    text-align: center;
+    transition: all 0.2s ease;
+    font-family: inherit;
+  }
+  .shape-btn:hover {
+    border-color: var(--border-hover);
+    color: var(--text2);
+  }
+  .shape-btn.active {
+    border-color: var(--accent);
+    background: var(--accent-glow);
+    color: var(--accent-light);
+    box-shadow: 0 0 12px var(--accent-glow);
+  }
+
+  /* === Action Bar === */
+  .actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 1.2rem;
+    flex-wrap: wrap;
+    animation: fadeIn 0.5s ease-out 0.3s both;
+  }
+  .btn {
+    padding: 11px 24px;
+    border-radius: var(--radius-sm);
+    font-size: 14px;
+    font-weight: 600;
+    border: none;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-family: inherit;
+    letter-spacing: 0.2px;
+  }
+  .btn:active { transform: scale(0.97); }
+  .btn-primary {
+    background: linear-gradient(135deg, var(--accent), #8b5cf6);
+    color: white;
+    box-shadow: 0 4px 16px rgba(99,102,241,0.25);
+  }
+  .btn-primary:hover {
+    box-shadow: 0 6px 24px rgba(99,102,241,0.35);
+    transform: translateY(-1px);
+  }
+  .btn-primary:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+    transform: none !important;
+    box-shadow: none;
+  }
+  .btn-ghost {
+    background: var(--surface2);
+    color: var(--text2);
+    border: 1px solid var(--border);
+  }
+  .btn-ghost:hover {
+    border-color: var(--border-hover);
+    background: rgba(30,34,53,0.9);
+  }
+  .btn-success {
+    background: var(--success-bg);
+    color: var(--success);
+    border: 1px solid rgba(52,211,153,0.2);
+  }
+  .btn-success:hover {
+    background: rgba(52,211,153,0.15);
+    border-color: rgba(52,211,153,0.35);
+  }
+
+  /* === Status Bar === */
+  .status-bar {
+    margin-top: 1rem;
+    padding: 12px 16px;
+    border-radius: var(--radius-sm);
+    font-size: 13px;
+    font-weight: 500;
+    display: none;
+    align-items: center;
+    gap: 10px;
+    animation: slideIn 0.3s ease-out;
+  }
+  @keyframes slideIn {
+    from { opacity: 0; transform: translateY(-8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .status-bar.show { display: flex; }
+  .status-bar.loading {
+    background: var(--accent-glow);
+    border: 1px solid rgba(99,102,241,0.15);
+    color: var(--accent-light);
+  }
+  .status-bar.success {
+    background: var(--success-bg);
+    border: 1px solid rgba(52,211,153,0.15);
+    color: var(--success);
+  }
+  .status-bar.error {
+    background: var(--danger-bg);
+    border: 1px solid rgba(248,113,113,0.15);
+    color: var(--danger);
+  }
+  .spinner {
+    width: 16px; height: 16px;
+    border: 2.5px solid rgba(99,102,241,0.2);
+    border-top-color: var(--accent-light);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    flex-shrink: 0;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* === Preview Area === */
+  .preview-area {
+    display: none;
+    margin-top: 1.2rem;
+    gap: 1.2rem;
+  }
+  .preview-area.show {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    animation: fadeIn 0.4s ease-out;
+  }
+  @media (max-width: 640px) { .preview-area.show { grid-template-columns: 1fr; } }
+  .preview-box {
+    overflow: hidden;
+  }
+  .preview-box-header {
+    padding: 12px 16px;
+    font-size: 12px;
+    color: var(--muted);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-weight: 500;
+    letter-spacing: 0.3px;
+  }
+  .preview-box-header .title {
+    display: flex; align-items: center; gap: 6px;
+    color: var(--text2);
+    font-weight: 600;
+  }
+  .preview-box img, .preview-box canvas {
+    width: 100%;
+    display: block;
+    max-height: 400px;
+    object-fit: contain;
+    background: #07080e;
+  }
+  .face-tag {
+    font-size: 11px;
+    padding: 3px 10px;
+    border-radius: 12px;
+    background: var(--warn-bg);
+    color: var(--warn);
+    border: 1px solid rgba(251,191,36,0.2);
+    font-weight: 600;
+  }
+  .result-tag {
+    font-size: 11px;
+    color: var(--success);
+    font-weight: 600;
+  }
+
+  /* === Bottom Features === */
+  .features-grid {
+    margin-top: 2.5rem;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    animation: fadeIn 0.5s ease-out 0.4s both;
+  }
+  @media (max-width: 560px) { .features-grid { grid-template-columns: 1fr; } }
+  .feature-card {
+    padding: 18px;
+    font-size: 13px;
+    line-height: 1.7;
+  }
+  .feature-icon {
+    font-size: 20px;
+    margin-bottom: 8px;
+    display: block;
+  }
+  .feature-card strong {
+    color: var(--text);
+    font-size: 13px;
+    font-weight: 600;
+    display: block;
+    margin-bottom: 4px;
+  }
+  .feature-card p {
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.6;
+  }
+
+  /* === Footer === */
+  .footer {
+    margin-top: 3rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--border);
+    text-align: center;
+    font-size: 12px;
+    color: var(--muted);
+    animation: fadeIn 0.5s ease-out 0.5s both;
+  }
+  .footer a {
+    color: var(--accent-light);
+    text-decoration: none;
+  }
+  .footer a:hover { text-decoration: underline; }
+
+  /* === Progress Bar === */
+  .progress-wrapper {
+    margin-top: 8px;
+    display: none;
+  }
+  .progress-wrapper.show { display: block; }
+  .progress-bar {
+    height: 3px;
+    background: var(--surface2);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent), #a78bfa);
+    border-radius: 3px;
+    transition: width 0.3s ease;
+    width: 0%;
+  }
+
+  /* === Scrollbar === */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb {
+    background: var(--surface2);
+    border-radius: 3px;
+  }
+  ::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+</style>
+</head>
+<body>
+
+<!-- Background Effects -->
+<div class="bg-grid"></div>
+<div class="bg-glow bg-glow-1"></div>
+<div class="bg-glow bg-glow-2"></div>
+
+<div class="app-wrapper">
+
+  <!-- Header -->
+  <header class="header">
+    <div class="logo">🛡️</div>
+    <div class="header-info">
+      <h1>FaceBlur</h1>
+      <p>本地 AI 人脸检测 · 浏览器端处理 · 无限次使用</p>
+    </div>
+    <div class="header-badge">
+      <span class="pulse-dot"></span>
+      完全本地，不上传
+    </div>
+  </header>
+
+  <!-- Upload Zone -->
+  <div class="glass-card upload-zone" id="uploadZone">
+    <input type="file" id="fileInput" accept="image/*">
+    <div class="upload-visual">📷</div>
+    <h3>拖放图片到此处</h3>
+    <p class="sub-text">支持 JPG · PNG · WebP · GIF 等格式，图片仅在本地处理</p>
+    <span class="upload-trigger">✦ 选择文件</span>
+  </div>
+
+  <!-- Settings -->
+  <div class="glass-card settings-panel">
+    <div class="panel-header">⚙ 处理参数</div>
+    <div class="settings-grid">
+      <div class="field">
+        <label>
+          模糊强度
+          <span class="value-tag" id="blurVal">20</span>
+        </label>
+        <input type="range" id="blurSlider" min="5" max="60" value="20" step="1">
+      </div>
+      <div class="field">
+        <label>
+          检测灵敏度
+          <span class="value-tag" id="confVal">50%</span>
+        </label>
+        <input type="range" id="confSlider" min="20" max="90" value="50" step="5">
+      </div>
+      <div class="field">
+        <label>遮罩形状</label>
+        <div class="shape-selector">
+          <button class="shape-btn active" data-shape="rect">▣ 矩形</button>
+          <button class="shape-btn" data-shape="ellipse">⬭ 椭圆</button>
+          <button class="shape-btn" data-shape="pixel">▦ 像素化</button>
+        </div>
+      </div>
+      <div class="field">
+        <label>
+          边距扩展
+          <span class="value-tag" id="paddingVal">20%</span>
+        </label>
+        <input type="range" id="paddingSlider" min="0" max="60" value="20" step="5">
+      </div>
+    </div>
+  </div>
+
+  <!-- Actions -->
+  <div class="actions">
+    <button class="btn btn-primary" id="processBtn" disabled>
+      ▶ 开始处理
+    </button>
+    <button class="btn btn-ghost" id="resetBtn">
+      ↺ 重新上传
+    </button>
+    <button class="btn btn-success" id="downloadBtn" style="display:none;">
+      ⬇ 下载结果
+    </button>
+  </div>
+
+  <!-- Status -->
+  <div class="status-bar" id="statusBar">
+    <div class="spinner" id="spinner" style="display:none;"></div>
+    <span id="statusText"></span>
+  </div>
+  <div class="progress-wrapper" id="progressWrapper">
+    <div class="progress-bar">
+      <div class="progress-fill" id="progressFill"></div>
+    </div>
+  </div>
+
+  <!-- Preview -->
+  <div class="preview-area" id="previewArea">
+    <div class="glass-card preview-box">
+      <div class="preview-box-header">
+        <span class="title">📄 原图</span>
+        <span id="faceCountBadge" class="face-tag"></span>
+      </div>
+      <img id="previewImg" alt="原图预览">
+    </div>
+    <div class="glass-card preview-box">
+      <div class="preview-box-header">
+        <span class="title">🔒 处理结果</span>
+        <span id="resultStatus" class="result-tag"></span>
+      </div>
+      <canvas id="resultCanvas"></canvas>
+    </div>
+  </div>
+
+  <!-- Features -->
+  <div class="features-grid">
+    <div class="glass-card feature-card">
+      <span class="feature-icon">🧠</span>
+      <strong>AI 人脸检测</strong>
+      <p>基于 TinyFaceDetector 模型，首次加载后自动缓存，支持离线使用。</p>
+    </div>
+    <div class="glass-card feature-card">
+      <span class="feature-icon">🔐</span>
+      <strong>完全本地处理</strong>
+      <p>所有计算在浏览器端完成，图片绝不上传任何外部服务器。</p>
+    </div>
+    <div class="glass-card feature-card">
+      <span class="feature-icon">♾️</span>
+      <strong>无限次使用</strong>
+      <p>无需注册，无需积分，无使用次数限制，随时随地使用。</p>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <p>FaceBlur · 使用 <a href="https://github.com/justadudewhohacks/face-api.js" target="_blank">face-api.js</a> 构建 · 完全开源</p>
+  </footer>
+
+</div>
+
+<script>
+const MODEL_URL = 'https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/weights';
+
+let modelsLoaded = false;
+let currentImage = null;
+let currentShape = 'rect';
+
+const uploadZone = document.getElementById('uploadZone');
+const fileInput = document.getElementById('fileInput');
+const processBtn = document.getElementById('processBtn');
+const resetBtn = document.getElementById('resetBtn');
+const downloadBtn = document.getElementById('downloadBtn');
+const statusBar = document.getElementById('statusBar');
+const statusText = document.getElementById('statusText');
+const spinner = document.getElementById('spinner');
+const previewArea = document.getElementById('previewArea');
+const previewImg = document.getElementById('previewImg');
+const resultCanvas = document.getElementById('resultCanvas');
+const faceCountBadge = document.getElementById('faceCountBadge');
+const resultStatus = document.getElementById('resultStatus');
+const progressWrapper = document.getElementById('progressWrapper');
+const progressFill = document.getElementById('progressFill');
+
+const blurSlider = document.getElementById('blurSlider');
+const confSlider = document.getElementById('confSlider');
+const paddingSlider = document.getElementById('paddingSlider');
+
+blurSlider.addEventListener('input', () => {
+  document.getElementById('blurVal').textContent = blurSlider.value;
+});
+confSlider.addEventListener('input', () => {
+  document.getElementById('confVal').textContent = confSlider.value + '%';
+});
+paddingSlider.addEventListener('input', () => {
+  document.getElementById('paddingVal').textContent = paddingSlider.value + '%';
+});
+
+document.querySelectorAll('.shape-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.shape-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    currentShape = btn.dataset.shape;
+  });
+});
+
+function setStatus(type, text, showSpinner = false) {
+  statusBar.className = 'status-bar show ' + type;
+  statusText.textContent = text;
+  spinner.style.display = showSpinner ? 'block' : 'none';
+}
+function hideStatus() { statusBar.className = 'status-bar'; }
+
+function setProgress(pct) {
+  progressWrapper.classList.toggle('show', pct >= 0);
+  progressFill.style.width = Math.min(100, Math.max(0, pct)) + '%';
+}
+
+async function loadModels() {
+  if (modelsLoaded) return;
+  setStatus('loading', '正在加载 AI 人脸检测模型…', true);
+  setProgress(10);
+  try {
+    await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
+    modelsLoaded = true;
+    setProgress(100);
+    setStatus('success', '✓ 模型加载完成，可以开始处理');
+    setTimeout(() => {
+      hideStatus();
+      setProgress(-1);
+    }, 2500);
+  } catch (e) {
+    setProgress(-1);
+    setStatus('error', '模型加载失败，请检查网络连接后刷新页面');
+  }
+}
+
+function handleFile(file) {
+  if (!file || !file.type.startsWith('image/')) {
+    setStatus('error', '请选择有效的图片文件');
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = e => {
+    const img = new Image();
+    img.onload = () => {
+      currentImage = img;
+      previewImg.src = e.target.result;
+      previewArea.className = 'preview-area show';
+      faceCountBadge.textContent = '';
+      resultStatus.textContent = '';
+      resultCanvas.getContext('2d').clearRect(0, 0, resultCanvas.width, resultCanvas.height);
+      processBtn.disabled = false;
+      downloadBtn.style.display = 'none';
+      loadModels();
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+fileInput.addEventListener('change', e => handleFile(e.target.files[0]));
+
+uploadZone.addEventListener('dragover', e => {
+  e.preventDefault();
+  uploadZone.classList.add('drag-over');
+});
+uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('drag-over'));
+uploadZone.addEventListener('drop', e => {
+  e.preventDefault();
+  uploadZone.classList.remove('drag-over');
+  handleFile(e.dataTransfer.files[0]);
+});
+
+resetBtn.addEventListener('click', () => {
+  currentImage = null;
+  fileInput.value = '';
+  previewArea.className = 'preview-area';
+  processBtn.disabled = true;
+  downloadBtn.style.display = 'none';
+  hideStatus();
+  setProgress(-1);
+});
+
+processBtn.addEventListener('click', async () => {
+  if (!currentImage || !modelsLoaded) return;
+  processBtn.disabled = true;
+  setStatus('loading', '正在检测人脸…', true);
+  setProgress(20);
+
+  try {
+    const minConf = parseInt(confSlider.value) / 100;
+    const detections = await faceapi.detectAllFaces(
+      currentImage,
+      new faceapi.TinyFaceDetectorOptions({ scoreThreshold: minConf })
+    );
+
+    setProgress(50);
+    const count = detections.length;
+    faceCountBadge.textContent = `检测到 ${count} 张人脸`;
+
+    if (count === 0) {
+      setStatus('error', '未检测到人脸，请调低灵敏度或更换图片');
+      processBtn.disabled = false;
+      setProgress(-1);
+      return;
+    }
+
+    setStatus('loading', `正在模糊 ${count} 张人脸…`, true);
+    setProgress(60);
+
+    const canvas = resultCanvas;
+    const ctx = canvas.getContext('2d');
+    canvas.width = currentImage.naturalWidth;
+    canvas.height = currentImage.naturalHeight;
+    ctx.drawImage(currentImage, 0, 0);
+
+    const blurAmt = parseInt(blurSlider.value);
+    const padding = parseInt(paddingSlider.value) / 100;
+
+    for (let i = 0; i < detections.length; i++) {
+      const det = detections[i];
+      const { x, y, width, height } = det.box;
+      const px = width * padding;
+      const py = height * padding;
+      const bx = Math.max(0, x - px);
+      const by = Math.max(0, y - py);
+      const bw = Math.min(canvas.width - bx, width + px * 2);
+      const bh = Math.min(canvas.height - by, height + py * 2);
+
+      ctx.save();
+      ctx.beginPath();
+
+      if (currentShape === 'ellipse') {
+        ctx.ellipse(bx + bw / 2, by + bh / 2, bw / 2, bh / 2, 0, 0, Math.PI * 2);
+      } else {
+        ctx.rect(bx, by, bw, bh);
+      }
+
+      ctx.clip();
+
+      if (currentShape === 'pixel') {
+        applyPixelate(ctx, currentImage, bx, by, bw, bh, canvas.width, canvas.height, blurAmt);
+      } else {
+        ctx.filter = `blur(${blurAmt}px)`;
+        for (let j = 0; j < 3; j++) {
+          ctx.drawImage(currentImage, 0, 0, canvas.width, canvas.height);
+        }
+        ctx.filter = 'none';
+      }
+
+      ctx.restore();
+      setProgress(60 + ((i + 1) / detections.length) * 35);
+    }
+
+    setProgress(100);
+    resultStatus.textContent = '✓ 处理完成';
+    setStatus('success', `✓ 成功模糊 ${count} 张人脸`);
+    downloadBtn.style.display = 'inline-flex';
+    processBtn.disabled = false;
+    setTimeout(() => setProgress(-1), 1500);
+  } catch (err) {
+    setStatus('error', '处理出错：' + err.message);
+    processBtn.disabled = false;
+    setProgress(-1);
+  }
+});
+
+function applyPixelate(ctx, img, bx, by, bw, bh, cw, ch, blurAmt) {
+  const blockSize = Math.max(4, Math.round(blurAmt / 2));
+  const tempCanvas = document.createElement('canvas');
+  tempCanvas.width = cw; tempCanvas.height = ch;
+  const tc = tempCanvas.getContext('2d');
+  tc.drawImage(img, 0, 0, cw, ch);
+
+  for (let px2 = bx; px2 < bx + bw; px2 += blockSize) {
+    for (let py2 = by; py2 < by + bh; py2 += blockSize) {
+      const data = tc.getImageData(px2 + blockSize / 2, py2 + blockSize / 2, 1, 1).data;
+      ctx.fillStyle = `rgba(${data[0]},${data[1]},${data[2]},${data[3] / 255})`;
+      ctx.fillRect(px2, py2, blockSize, blockSize);
+    }
+  }
+}
+
+downloadBtn.addEventListener('click', () => {
+  const link = document.createElement('a');
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  link.download = `blurred_${timestamp}.png`;
+  link.href = resultCanvas.toDataURL('image/png');
+  link.click();
+});
+
+// Auto-load models on page load
+loadModels();
+</script>
+</body>
+</html>
