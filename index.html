@@ -270,7 +270,7 @@ async function loadDetector() {
         delegate: 'GPU'
       },
       runningMode: 'IMAGE',
-      minDetectionConfidence: 0.3
+      minDetectionConfidence: 0.1
     });
     setStatus('success', '✓ 模型加载完成');
     setTimeout(hideStatus, 2000);
@@ -285,7 +285,7 @@ async function loadDetector() {
           delegate: 'CPU'
         },
         runningMode: 'IMAGE',
-        minDetectionConfidence: 0.3
+        minDetectionConfidence: 0.1
       });
       setStatus('success', '✓ 模型加载完成');
       setTimeout(hideStatus, 2000);
@@ -337,70 +337,81 @@ resetBtn.addEventListener('click', () => {
   hideStatus();
 });
 
-startBtn.addEventListener('click', async () => {
+startBtn.addEventListener('click', () => {
   if (!currentImage || !detector) return;
   startBtn.disabled = true;
   setStatus('loading', '正在检测人脸…', true);
 
-  try {
-    const result = detector.detect(currentImage);
-    const detections = result.detections;
-    const count = detections.length;
-    faceBadge.textContent = count > 0 ? `${count} 张人脸` : '';
+  // Use setTimeout to let UI render the loading status before blocking detection
+  setTimeout(() => {
+    try {
+      const result = detector.detect(currentImage);
+      const detections = result.detections;
+      const count = detections.length;
+      faceBadge.textContent = count > 0 ? `${count} 张人脸` : '';
 
-    if (count === 0) {
-      setStatus('error', '未检测到人脸，请更换图片');
-      startBtn.disabled = false;
-      return;
-    }
-
-    setStatus('loading', `正在模糊 ${count} 张人脸…`, true);
-
-    const canvas = resultCanvas;
-    const ctx = canvas.getContext('2d');
-    canvas.width = currentImage.naturalWidth;
-    canvas.height = currentImage.naturalHeight;
-    ctx.drawImage(currentImage, 0, 0);
-
-    const strength = Math.max(1, Math.min(20, parseInt(document.getElementById('blurStrength').value) || 3));
-    const range = Math.max(0, Math.min(100, parseInt(document.getElementById('blurRange').value) || 0));
-    const blurPx = strength * 5;
-    const padding = range / 100;
-
-    for (const det of detections) {
-      const bb = det.boundingBox;
-      const x = bb.originX;
-      const y = bb.originY;
-      const w = bb.width;
-      const h = bb.height;
-
-      const px = w * padding;
-      const py = h * padding;
-      const bx = Math.max(0, x - px);
-      const by = Math.max(0, y - py);
-      const bw = Math.min(canvas.width - bx, w + px * 2);
-      const bh = Math.min(canvas.height - by, h + py * 2);
-
-      ctx.save();
-      ctx.beginPath();
-      ctx.ellipse(bx + bw / 2, by + bh / 2, bw / 2, bh / 2, 0, 0, Math.PI * 2);
-      ctx.clip();
-      ctx.filter = `blur(${blurPx}px)`;
-      for (let j = 0; j < 3; j++) {
-        ctx.drawImage(currentImage, 0, 0, canvas.width, canvas.height);
+      if (count === 0) {
+        setStatus('error', '未检测到人脸，请更换图片（注意：仅支持真人照片）');
+        startBtn.disabled = false;
+        return;
       }
-      ctx.filter = 'none';
-      ctx.restore();
-    }
 
-    doneBadge.textContent = '✓ 完成';
-    setStatus('success', `✓ 已模糊 ${count} 张人脸`);
-    resultActions.className = 'result show';
-    startBtn.disabled = false;
-  } catch (err) {
-    setStatus('error', '处理出错：' + err.message);
-    startBtn.disabled = false;
-  }
+      setStatus('loading', `正在模糊 ${count} 张人脸…`, true);
+
+      // Let UI update, then do the heavy canvas work
+      setTimeout(() => {
+        try {
+          const canvas = resultCanvas;
+          const ctx = canvas.getContext('2d');
+          canvas.width = currentImage.naturalWidth;
+          canvas.height = currentImage.naturalHeight;
+          ctx.drawImage(currentImage, 0, 0);
+
+          const strength = Math.max(1, Math.min(20, parseInt(document.getElementById('blurStrength').value) || 3));
+          const range = Math.max(0, Math.min(100, parseInt(document.getElementById('blurRange').value) || 0));
+          const blurPx = strength * 5;
+          const padding = range / 100;
+
+          for (const det of detections) {
+            const bb = det.boundingBox;
+            const x = bb.originX;
+            const y = bb.originY;
+            const w = bb.width;
+            const h = bb.height;
+
+            const px = w * padding;
+            const py = h * padding;
+            const bx = Math.max(0, x - px);
+            const by = Math.max(0, y - py);
+            const bw = Math.min(canvas.width - bx, w + px * 2);
+            const bh = Math.min(canvas.height - by, h + py * 2);
+
+            ctx.save();
+            ctx.beginPath();
+            ctx.ellipse(bx + bw / 2, by + bh / 2, bw / 2, bh / 2, 0, 0, Math.PI * 2);
+            ctx.clip();
+            ctx.filter = `blur(${blurPx}px)`;
+            for (let j = 0; j < 3; j++) {
+              ctx.drawImage(currentImage, 0, 0, canvas.width, canvas.height);
+            }
+            ctx.filter = 'none';
+            ctx.restore();
+          }
+
+          doneBadge.textContent = '✓ 完成';
+          setStatus('success', `✓ 已模糊 ${count} 张人脸`);
+          resultActions.className = 'result show';
+          startBtn.disabled = false;
+        } catch (err) {
+          setStatus('error', '处理出错：' + err.message);
+          startBtn.disabled = false;
+        }
+      }, 50);
+    } catch (err) {
+      setStatus('error', '处理出错：' + err.message);
+      startBtn.disabled = false;
+    }
+  }, 50);
 });
 
 downloadBtn.addEventListener('click', () => {
