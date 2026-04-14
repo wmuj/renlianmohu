@@ -3,365 +3,229 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>人脸模糊工具</title>
-<meta name="description" content="一键模糊照片中的人脸，本地处理，保护隐私">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<title>FaceBlur · 人脸模糊工具</title>
+<meta name="description" content="一键模糊照片中的人脸，完全本地AI处理，保护隐私">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body {
-    background: #f5f6fa;
-    font-family: 'Inter', -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif;
-    color: #1a1a2e;
-    min-height: 100vh;
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+
+  :root{
+    --bg:#09090f;
+    --card:rgba(255,255,255,0.04);
+    --card-border:rgba(255,255,255,0.07);
+    --card-hover:rgba(255,255,255,0.06);
+    --accent:#7c5cfc;
+    --accent2:#a78bfa;
+    --accent-glow:rgba(124,92,252,0.12);
+    --text:#f0f0f5;
+    --text2:#a0a3b8;
+    --text3:#6b6e85;
+    --green:#2dd4a8;
+    --orange:#fb923c;
+    --red:#f87171;
+    --r:14px;
   }
 
-  .top-bar {
-    background: #2563eb;
-    color: white;
-    padding: 18px 24px;
-  }
-  .top-bar h1 { font-size: 20px; font-weight: 700; }
-  .top-bar p { font-size: 13px; opacity: 0.85; margin-top: 2px; }
-
-  .container {
-    max-width: 800px;
-    margin: 0 auto;
-    padding: 24px 16px;
+  body{
+    background:var(--bg);
+    color:var(--text);
+    font-family:'Inter',-apple-system,'PingFang SC','Microsoft YaHei',sans-serif;
+    min-height:100vh;
+    overflow-x:hidden;
   }
 
-  /* Upload */
-  .upload-box {
-    background: #2563eb;
-    border-radius: 12px;
-    padding: 48px 24px;
-    text-align: center;
-    cursor: pointer;
-    position: relative;
-    color: white;
-    border: 3px dashed rgba(255,255,255,0.4);
-    transition: background 0.2s;
+  /* ── BG ── */
+  .bg{position:fixed;inset:0;pointer-events:none;z-index:0;overflow:hidden}
+  .bg .orb{position:absolute;border-radius:50%;filter:blur(100px);opacity:.12}
+  .bg .orb-1{width:520px;height:520px;background:#7c5cfc;top:-120px;left:-80px;animation:orbit 25s ease-in-out infinite}
+  .bg .orb-2{width:440px;height:440px;background:#06b6d4;bottom:-100px;right:-60px;animation:orbit 25s ease-in-out infinite reverse}
+  .bg .orb-3{width:300px;height:300px;background:#f472b6;top:40%;left:60%;animation:orbit 20s ease-in-out infinite 5s}
+  @keyframes orbit{0%,100%{transform:translate(0,0)}33%{transform:translate(50px,30px)}66%{transform:translate(-40px,50px)}}
+  .bg .grid{position:absolute;inset:0;background-image:linear-gradient(rgba(255,255,255,.02) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.02) 1px,transparent 1px);background-size:64px 64px}
+
+  /* ── Layout ── */
+  .wrap{position:relative;z-index:1;max-width:840px;margin:0 auto;padding:40px 20px 60px}
+
+  /* ── Header ── */
+  .hd{display:flex;align-items:center;gap:14px;margin-bottom:36px;animation:fadeUp .5s ease}
+  @keyframes fadeUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+  .hd-icon{
+    width:48px;height:48px;border-radius:14px;flex-shrink:0;
+    background:linear-gradient(135deg,#7c5cfc,#a78bfa);
+    display:flex;align-items:center;justify-content:center;font-size:22px;
+    box-shadow:0 0 32px rgba(124,92,252,.35);
   }
-  .upload-box:hover { background: #1d4ed8; }
-  .upload-box.drag-over { background: #1d4ed8; border-color: white; }
-  .upload-box input[type="file"] {
-    position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
+  .hd h1{font-size:22px;font-weight:800;letter-spacing:-.5px;
+    background:linear-gradient(90deg,#f0f0f5 30%,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+  .hd p{font-size:13px;color:var(--text3);margin-top:2px}
+  .hd-tag{margin-left:auto;font-size:11px;padding:5px 12px;border-radius:20px;background:rgba(45,212,168,.08);color:var(--green);border:1px solid rgba(45,212,168,.18);display:flex;align-items:center;gap:5px;white-space:nowrap}
+  .dot{width:5px;height:5px;border-radius:50%;background:var(--green);animation:blink 2s ease-in-out infinite}
+  @keyframes blink{0%,100%{opacity:.3}50%{opacity:1}}
+
+  /* ── Card ── */
+  .card{background:var(--card);backdrop-filter:blur(16px);border:1px solid var(--card-border);border-radius:var(--r);transition:border-color .25s}
+  .card:hover{border-color:rgba(255,255,255,.1)}
+
+  /* ── Upload ── */
+  .upload{padding:52px 24px;text-align:center;cursor:pointer;position:relative;overflow:hidden;animation:fadeUp .5s ease .05s both}
+  .upload::before{content:'';position:absolute;inset:1px;border:2px dashed rgba(124,92,252,.18);border-radius:var(--r);pointer-events:none;transition:.3s}
+  .upload:hover::before,.upload.drag-over::before{border-color:var(--accent);background:rgba(124,92,252,.03)}
+  .upload input{position:absolute;inset:0;opacity:0;cursor:pointer}
+  .upload-circle{
+    width:72px;height:72px;margin:0 auto 16px;border-radius:50%;
+    background:linear-gradient(135deg,var(--accent-glow),rgba(124,92,252,.22));
+    display:flex;align-items:center;justify-content:center;font-size:28px;
+    position:relative;
   }
-  .upload-icon {
-    width: 64px; height: 64px; margin: 0 auto 16px;
-    background: rgba(255,255,255,0.15);
-    border-radius: 50%;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 28px;
-  }
-  .upload-box h3 { font-size: 16px; font-weight: 500; margin-bottom: 12px; }
-  .select-btn {
-    display: inline-block;
-    padding: 10px 28px;
-    background: white;
-    color: #2563eb;
-    border-radius: 8px;
-    font-size: 14px;
-    font-weight: 600;
-    pointer-events: none;
+  .upload-circle::after{content:'';position:absolute;inset:-3px;border-radius:50%;border:2px dashed rgba(124,92,252,.25);animation:spin 15s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .upload h3{font-size:15px;font-weight:600;margin-bottom:4px}
+  .upload .sub{font-size:12px;color:var(--text3);margin-bottom:16px}
+  .upload-cta{
+    display:inline-flex;align-items:center;gap:6px;padding:9px 22px;
+    background:linear-gradient(135deg,var(--accent),#9b7fff);color:#fff;
+    border-radius:10px;font-size:13px;font-weight:600;pointer-events:none;
+    box-shadow:0 4px 20px rgba(124,92,252,.3);
   }
 
-  /* Settings */
-  .settings-card {
-    background: white;
-    border-radius: 12px;
-    padding: 24px;
-    margin-top: 16px;
-    box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+  /* ── Settings ── */
+  .settings{margin-top:14px;padding:22px 24px;animation:fadeUp .5s ease .1s both}
+  .stitle{font-size:11px;text-transform:uppercase;letter-spacing:1.2px;color:var(--text3);font-weight:600;margin-bottom:18px;display:flex;align-items:center;gap:6px}
+  .stitle::after{content:'';flex:1;height:1px;background:linear-gradient(90deg,var(--card-border),transparent)}
+  .srow{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+  @media(max-width:520px){.srow{grid-template-columns:1fr}}
+  .fld-label{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;color:var(--text2);margin-bottom:8px}
+  .tip-dot{
+    width:15px;height:15px;border-radius:50%;background:rgba(255,255,255,.06);
+    display:inline-flex;align-items:center;justify-content:center;
+    font-size:9px;color:var(--text3);cursor:help;
+    position:relative;
   }
-  .settings-title {
-    font-size: 14px;
-    font-weight: 600;
-    margin-bottom: 20px;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    color: #374151;
+  .tip-dot:hover::after{content:attr(data-t);position:absolute;bottom:130%;left:50%;transform:translateX(-50%);background:#222;color:#ddd;padding:5px 10px;border-radius:6px;font-size:11px;font-weight:400;white-space:nowrap;z-index:9}
+  .fld input[type="number"]{
+    width:100%;max-width:180px;padding:9px 14px;
+    background:rgba(255,255,255,.04);border:1px solid var(--card-border);border-radius:10px;
+    color:var(--text);font-size:14px;font-family:inherit;outline:none;
+    transition:border-color .2s,box-shadow .2s;
   }
-  .field {
-    margin-bottom: 20px;
-  }
-  .field:last-child { margin-bottom: 0; }
-  .field-label {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 14px;
-    font-weight: 600;
-    color: #1f2937;
-    margin-bottom: 8px;
-  }
-  .field-label .info-icon {
-    width: 16px; height: 16px;
-    background: #e5e7eb;
-    border-radius: 50%;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 10px;
-    color: #6b7280;
-    cursor: help;
-    position: relative;
-  }
-  .field-label .info-icon:hover::after {
-    content: attr(data-tip);
-    position: absolute;
-    bottom: 120%;
-    left: 50%;
-    transform: translateX(-50%);
-    background: #1f2937;
-    color: white;
-    padding: 6px 10px;
-    border-radius: 6px;
-    font-size: 12px;
-    font-weight: 400;
-    white-space: nowrap;
-    z-index: 10;
-  }
-  .field input[type="number"] {
-    width: 100%;
-    max-width: 200px;
-    padding: 10px 14px;
-    border: 1.5px solid #d1d5db;
-    border-radius: 8px;
-    font-size: 15px;
-    font-family: inherit;
-    color: #1f2937;
-    outline: none;
-    transition: border-color 0.2s;
-  }
-  .field input[type="number"]:focus {
-    border-color: #2563eb;
-    box-shadow: 0 0 0 3px rgba(37,99,235,0.1);
-  }
-  .field-hint {
-    font-size: 12px;
-    color: #9ca3af;
-    margin-top: 4px;
-  }
+  .fld input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-glow)}
+  .fld-hint{font-size:11px;color:var(--text3);margin-top:4px}
 
-  /* Start Button */
-  .start-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    margin-top: 20px;
-    padding: 12px 32px;
-    background: #f59e0b;
-    color: white;
-    border: none;
-    border-radius: 8px;
-    font-size: 15px;
-    font-weight: 700;
-    cursor: pointer;
-    font-family: inherit;
-    transition: background 0.2s;
+  /* ── Buttons ── */
+  .bar{display:flex;gap:10px;margin-top:16px;flex-wrap:wrap;animation:fadeUp .5s ease .15s both}
+  .btn{
+    padding:11px 28px;border-radius:10px;font-size:14px;font-weight:600;
+    border:none;cursor:pointer;display:inline-flex;align-items:center;gap:7px;
+    font-family:inherit;transition:all .2s;
   }
-  .start-btn:hover { background: #d97706; }
-  .start-btn:disabled {
-    background: #d1d5db;
-    cursor: not-allowed;
-  }
+  .btn:active{transform:scale(.97)}
+  .btn-go{background:linear-gradient(135deg,var(--accent),#9b7fff);color:#fff;box-shadow:0 4px 20px rgba(124,92,252,.25)}
+  .btn-go:hover{box-shadow:0 6px 28px rgba(124,92,252,.35);transform:translateY(-1px)}
+  .btn-go:disabled{opacity:.3;cursor:not-allowed;transform:none!important;box-shadow:none}
+  .btn-dl{background:rgba(45,212,168,.1);color:var(--green);border:1px solid rgba(45,212,168,.18)}
+  .btn-dl:hover{background:rgba(45,212,168,.17)}
+  .btn-reset{background:rgba(255,255,255,.04);color:var(--text2);border:1px solid var(--card-border)}
+  .btn-reset:hover{border-color:rgba(255,255,255,.12)}
 
-  /* Status */
-  .status {
-    margin-top: 16px;
-    padding: 12px 16px;
-    border-radius: 8px;
-    font-size: 14px;
-    display: none;
-    align-items: center;
-    gap: 10px;
-  }
-  .status.show { display: flex; }
-  .status.loading { background: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe; }
-  .status.success { background: #f0fdf4; color: #16a34a; border: 1px solid #bbf7d0; }
-  .status.error { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; }
-  .spinner {
-    width: 16px; height: 16px;
-    border: 2.5px solid #bfdbfe;
-    border-top-color: #2563eb;
-    border-radius: 50%;
-    animation: spin 0.7s linear infinite;
-    flex-shrink: 0;
-  }
-  @keyframes spin { to { transform: rotate(360deg); } }
+  /* ── Status ── */
+  .st{margin-top:12px;padding:11px 16px;border-radius:10px;font-size:13px;font-weight:500;display:none;align-items:center;gap:9px;animation:fadeUp .25s ease}
+  .st.show{display:flex}
+  .st.loading{background:var(--accent-glow);border:1px solid rgba(124,92,252,.12);color:var(--accent2)}
+  .st.success{background:rgba(45,212,168,.06);border:1px solid rgba(45,212,168,.12);color:var(--green)}
+  .st.error{background:rgba(248,113,113,.06);border:1px solid rgba(248,113,113,.12);color:var(--red)}
+  .sp{width:14px;height:14px;border:2px solid rgba(124,92,252,.2);border-top-color:var(--accent2);border-radius:50%;animation:spin .65s linear infinite;flex-shrink:0}
 
-  /* Preview */
-  .preview-section {
-    display: none;
-    margin-top: 20px;
-  }
-  .preview-section.show { display: block; }
-  .preview-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 16px;
-  }
-  @media (max-width: 600px) { .preview-grid { grid-template-columns: 1fr; } }
-  .preview-card {
-    background: white;
-    border-radius: 12px;
-    overflow: hidden;
-    box-shadow: 0 1px 4px rgba(0,0,0,0.06);
-  }
-  .preview-header {
-    padding: 10px 14px;
-    font-size: 13px;
-    font-weight: 600;
-    color: #6b7280;
-    border-bottom: 1px solid #f3f4f6;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-  }
-  .face-badge {
-    font-size: 11px;
-    padding: 2px 8px;
-    border-radius: 10px;
-    background: #fef3c7;
-    color: #d97706;
-    font-weight: 600;
-  }
-  .done-badge {
-    font-size: 11px;
-    color: #16a34a;
-    font-weight: 600;
-  }
-  .preview-card img, .preview-card canvas {
-    width: 100%;
-    display: block;
-    max-height: 420px;
-    object-fit: contain;
-    background: #f9fafb;
-  }
+  /* ── Preview ── */
+  .preview{display:none;margin-top:16px;gap:14px}
+  .preview.show{display:grid;grid-template-columns:1fr 1fr;animation:fadeUp .35s ease}
+  @media(max-width:600px){.preview.show{grid-template-columns:1fr}}
+  .pbox{overflow:hidden}
+  .pbox-hd{padding:10px 14px;font-size:11px;font-weight:600;color:var(--text3);border-bottom:1px solid var(--card-border);display:flex;align-items:center;justify-content:space-between;text-transform:uppercase;letter-spacing:.5px}
+  .pbox img,.pbox canvas{width:100%;display:block;max-height:400px;object-fit:contain;background:#07070d}
+  .tag-face{font-size:10px;padding:2px 8px;border-radius:10px;background:rgba(251,146,60,.08);color:var(--orange);border:1px solid rgba(251,146,60,.15);font-weight:600;text-transform:none;letter-spacing:0}
+  .tag-done{font-size:10px;color:var(--green);font-weight:600;text-transform:none;letter-spacing:0}
 
-  /* Download */
-  .result-actions {
-    display: none;
-    margin-top: 16px;
-    gap: 10px;
-  }
-  .result-actions.show { display: flex; flex-wrap: wrap; }
-  .dl-btn {
-    padding: 10px 24px;
-    background: #16a34a;
-    color: white;
-    border: none;
-    border-radius: 8px;
-    font-size: 14px;
-    font-weight: 600;
-    cursor: pointer;
-    font-family: inherit;
-    transition: background 0.2s;
-  }
-  .dl-btn:hover { background: #15803d; }
-  .reset-btn {
-    padding: 10px 24px;
-    background: white;
-    color: #374151;
-    border: 1.5px solid #d1d5db;
-    border-radius: 8px;
-    font-size: 14px;
-    font-weight: 500;
-    cursor: pointer;
-    font-family: inherit;
-  }
-  .reset-btn:hover { background: #f9fafb; }
+  /* ── Result ── */
+  .result{display:none;margin-top:14px;gap:10px}
+  .result.show{display:flex;flex-wrap:wrap}
 
-  /* Footer */
-  .footer {
-    margin-top: 40px;
-    padding: 16px;
-    text-align: center;
-    font-size: 12px;
-    color: #9ca3af;
-  }
+  /* ── Footer ── */
+  .ft{margin-top:48px;text-align:center;font-size:11px;color:var(--text3);letter-spacing:.3px}
+
+  ::-webkit-scrollbar{width:5px}
+  ::-webkit-scrollbar-track{background:var(--bg)}
+  ::-webkit-scrollbar-thumb{background:#222;border-radius:3px}
 </style>
 </head>
 <body>
 
-<div class="top-bar">
-  <div class="container" style="padding:0;">
-    <h1>模糊照片中的人脸</h1>
-    <p>一键保护隐私并保持匿名 · 完全本地处理，不上传</p>
-  </div>
+<div class="bg">
+  <div class="orb orb-1"></div>
+  <div class="orb orb-2"></div>
+  <div class="orb orb-3"></div>
+  <div class="grid"></div>
 </div>
 
-<div class="container">
+<div class="wrap">
 
-  <!-- Upload -->
-  <div class="upload-box" id="uploadBox">
+  <header class="hd">
+    <div class="hd-icon">🛡️</div>
+    <div>
+      <h1>FaceBlur</h1>
+      <p>本地 AI · 一键模糊人脸 · 无限次使用</p>
+    </div>
+    <div class="hd-tag"><span class="dot"></span>完全本地</div>
+  </header>
+
+  <div class="card upload" id="uploadBox">
     <input type="file" id="fileInput" accept="image/*">
-    <div class="upload-icon">☁️</div>
-    <h3>拖放文件到此处或点击上传</h3>
-    <span class="select-btn">选择文件</span>
+    <div class="upload-circle">📷</div>
+    <h3>拖放图片到此处</h3>
+    <p class="sub">支持 JPG · PNG · WebP 等格式，图片不离开你的设备</p>
+    <span class="upload-cta">✦ 选择文件</span>
   </div>
 
-  <!-- Settings -->
-  <div class="settings-card">
-    <div class="settings-title">⚙ 设置</div>
-
-    <div class="field">
-      <div class="field-label">
-        模糊强度
-        <span class="info-icon" data-tip="数值越大，模糊效果越强">?</span>
+  <div class="card settings">
+    <div class="stitle">⚙ 设置</div>
+    <div class="srow">
+      <div class="fld">
+        <div class="fld-label">模糊强度 <span class="tip-dot" data-t="数值越大模糊越强，推荐3-5">?</span></div>
+        <input type="number" id="blurStrength" value="3" min="1" max="20">
       </div>
-      <input type="number" id="blurStrength" value="3" min="1" max="20" step="1">
-    </div>
-
-    <div class="field">
-      <div class="field-label">
-        模糊范围
-        <span class="info-icon" data-tip="人脸周围额外扩展的区域，0-100">?</span>
+      <div class="fld">
+        <div class="fld-label">模糊范围 <span class="tip-dot" data-t="人脸周围扩展区域 0-100">?</span></div>
+        <input type="number" id="blurRange" value="0" min="0" max="100" placeholder="0 - 100">
+        <div class="fld-hint">0 - 100</div>
       </div>
-      <input type="number" id="blurRange" value="0" min="0" max="100" placeholder="0 - 100" step="5">
-      <div class="field-hint">0 - 100</div>
     </div>
   </div>
 
-  <!-- Start -->
-  <button class="start-btn" id="startBtn" disabled>开始 →</button>
+  <div class="bar">
+    <button class="btn btn-go" id="startBtn" disabled>▶ 开始处理</button>
+  </div>
 
-  <!-- Status -->
-  <div class="status" id="statusBar">
-    <div class="spinner" id="spinner" style="display:none;"></div>
+  <div class="st" id="statusBar">
+    <div class="sp" id="spinner" style="display:none"></div>
     <span id="statusText"></span>
   </div>
 
-  <!-- Preview -->
-  <div class="preview-section" id="previewSection">
-    <div class="preview-grid">
-      <div class="preview-card">
-        <div class="preview-header">
-          原图
-          <span id="faceBadge" class="face-badge"></span>
-        </div>
-        <img id="previewImg" alt="原图">
-      </div>
-      <div class="preview-card">
-        <div class="preview-header">
-          处理结果
-          <span id="doneBadge" class="done-badge"></span>
-        </div>
-        <canvas id="resultCanvas"></canvas>
-      </div>
+  <div class="preview" id="previewSection">
+    <div class="card pbox">
+      <div class="pbox-hd">原图 <span id="faceBadge" class="tag-face"></span></div>
+      <img id="previewImg" alt="原图">
+    </div>
+    <div class="card pbox">
+      <div class="pbox-hd">处理结果 <span id="doneBadge" class="tag-done"></span></div>
+      <canvas id="resultCanvas"></canvas>
     </div>
   </div>
 
-  <!-- Result Actions -->
-  <div class="result-actions" id="resultActions">
-    <button class="dl-btn" id="downloadBtn">⬇ 下载结果</button>
-    <button class="reset-btn" id="resetBtn">↺ 重新上传</button>
+  <div class="result" id="resultActions">
+    <button class="btn btn-dl" id="downloadBtn">⬇ 下载结果</button>
+    <button class="btn btn-reset" id="resetBtn">↺ 重新上传</button>
   </div>
 
-  <div class="footer">
-    本地 AI 处理 · 图片不上传任何服务器 · 无限次使用
-  </div>
+  <div class="ft">FaceBlur · Google MediaPipe AI · 图片不上传任何服务器</div>
 
 </div>
 
@@ -387,11 +251,11 @@ const doneBadge = document.getElementById('doneBadge');
 const resultActions = document.getElementById('resultActions');
 
 function setStatus(type, text, showSpinner) {
-  statusBar.className = 'status show ' + type;
+  statusBar.className = 'st show ' + type;
   statusText.textContent = text;
   spinnerEl.style.display = showSpinner ? 'block' : 'none';
 }
-function hideStatus() { statusBar.className = 'status'; }
+function hideStatus() { statusBar.className = 'st'; }
 
 async function loadDetector() {
   if (detector) return;
@@ -411,7 +275,6 @@ async function loadDetector() {
     setStatus('success', '✓ 模型加载完成');
     setTimeout(hideStatus, 2000);
   } catch (e) {
-    // Fallback: try CPU if GPU fails
     try {
       const filesetResolver = await FilesetResolver.forVisionTasks(
         'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm'
@@ -443,12 +306,12 @@ function handleFile(file) {
     img.onload = () => {
       currentImage = img;
       previewImg.src = e.target.result;
-      previewSection.className = 'preview-section show';
+      previewSection.className = 'preview show';
       faceBadge.textContent = '';
       doneBadge.textContent = '';
       resultCanvas.getContext('2d').clearRect(0, 0, resultCanvas.width, resultCanvas.height);
       startBtn.disabled = false;
-      resultActions.className = 'result-actions';
+      resultActions.className = 'result';
       loadDetector();
     };
     img.src = e.target.result;
@@ -468,9 +331,9 @@ uploadBox.addEventListener('drop', e => {
 resetBtn.addEventListener('click', () => {
   currentImage = null;
   fileInput.value = '';
-  previewSection.className = 'preview-section';
+  previewSection.className = 'preview';
   startBtn.disabled = true;
-  resultActions.className = 'result-actions';
+  resultActions.className = 'result';
   hideStatus();
 });
 
@@ -532,7 +395,7 @@ startBtn.addEventListener('click', async () => {
 
     doneBadge.textContent = '✓ 完成';
     setStatus('success', `✓ 已模糊 ${count} 张人脸`);
-    resultActions.className = 'result-actions show';
+    resultActions.className = 'result show';
     startBtn.disabled = false;
   } catch (err) {
     setStatus('error', '处理出错：' + err.message);
@@ -548,7 +411,6 @@ downloadBtn.addEventListener('click', () => {
   link.click();
 });
 
-// Start loading model immediately
 loadDetector();
 </script>
 </body>
