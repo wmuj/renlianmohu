@@ -7,6 +7,7 @@
 <meta name="description" content="一键模糊照片中的人脸，完全本地AI处理，保护隐私">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <script src="lib/face-api.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <style>
   *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
   :root{
@@ -94,7 +95,7 @@
     <div class="hd-tag"><span class="dot"></span>完全本地</div>
   </header>
   <div class="card upload" id="uploadBox">
-    <input type="file" id="fileInput" accept="image/*">
+    <input type="file" id="fileInput" accept="image/*" multiple>
     <div class="upload-circle">📷</div>
     <h3>拖放图片到此处</h3>
     <p class="sub">支持 JPG · PNG · WebP · 真人照片和插画均可</p>
@@ -105,7 +106,7 @@
     <div class="srow">
       <div class="fld">
         <div class="fld-label">模糊强度 <span class="tip-dot" data-t="数值越大模糊越强，推荐3-5">?</span></div>
-        <input type="number" id="blurStrength" value="1" min="0.1" max="20" step="0.1">
+        <input type="number" id="blurStrength" value="2" min="0.1" max="20" step="0.1">
       </div>
       <div class="fld">
         <div class="fld-label">模糊范围 <span class="tip-dot" data-t="人脸周围扩展区域 0-100">?</span></div>
@@ -132,7 +133,8 @@ import { FaceDetector, FilesetResolver } from 'https://cdn.jsdelivr.net/npm/@med
 
 let mpDetector = null;   // MediaPipe detector
 let fapiReady = false;   // face-api.js ready flag
-let currentImage = null;
+let currentImages = [];
+let currentZipBlob = null;
 
 const $ = id => document.getElementById(id);
 const uploadBox = $('uploadBox'), fileInput = $('fileInput'), startBtn = $('startBtn');
@@ -264,112 +266,161 @@ function iou(a, b) {
   return inter / union;
 }
 
-function handleFile(file) {
-  if (!file || !file.type.startsWith('image/')) { setStatus('error', '请选择图片文件'); return; }
-  const reader = new FileReader();
-  reader.onload = e => {
+function handleFiles(files) {
+  if (!files || files.length === 0) return;
+  const validFiles = Array.from(files).filter(f => f.type.startsWith('image/'));
+  if (validFiles.length === 0) { setStatus('error', '请选择图片文件'); return; }
+
+  currentImages = [];
+  currentZipBlob = null;
+  let loaded = 0;
+
+  faceBadge.textContent = ''; doneBadge.textContent = '';
+  resultCanvas.getContext('2d').clearRect(0, 0, resultCanvas.width, resultCanvas.height);
+  startBtn.disabled = true;
+  resultActions.className = 'result';
+  setStatus('loading', `正在读取 ${validFiles.length} 张图片…`, true);
+
+  validFiles.forEach(file => {
+    const url = URL.createObjectURL(file);
     const img = new Image();
     img.onload = () => {
-      currentImage = img;
-      previewImg.src = e.target.result;
-      previewSection.className = 'preview show';
-      faceBadge.textContent = ''; doneBadge.textContent = '';
-      resultCanvas.getContext('2d').clearRect(0, 0, resultCanvas.width, resultCanvas.height);
-      startBtn.disabled = false;
-      resultActions.className = 'result';
+      currentImages.push({ file, img, url, processedBlob: null, faceCount: 0 });
+      loaded++;
+      if (loaded === validFiles.length) {
+        previewImg.src = currentImages[0].url;
+        const titleText = validFiles.length > 1 ? `原图 (共${validFiles.length}张)` : '原图';
+        document.querySelector('.pbox-hd').innerHTML = `${titleText} <span id="faceBadge" class="tag-face"></span>`;
+        previewSection.className = 'preview show';
+        startBtn.disabled = false;
+        startBtn.textContent = validFiles.length > 1 ? `▶ 批量处理 (${validFiles.length})` : '▶ 开始处理';
+        setStatus('success', `✓ 已选择 ${validFiles.length} 张图片`);
+        setTimeout(hideStatus, 2000);
+      }
     };
-    img.src = e.target.result;
-  };
-  reader.readAsDataURL(file);
+    img.src = url;
+  });
 }
 
-fileInput.addEventListener('change', e => handleFile(e.target.files[0]));
+fileInput.addEventListener('change', e => handleFiles(e.target.files));
 uploadBox.addEventListener('dragover', e => { e.preventDefault(); uploadBox.classList.add('drag-over'); });
 uploadBox.addEventListener('dragleave', () => uploadBox.classList.remove('drag-over'));
-uploadBox.addEventListener('drop', e => { e.preventDefault(); uploadBox.classList.remove('drag-over'); handleFile(e.dataTransfer.files[0]); });
+uploadBox.addEventListener('drop', e => { e.preventDefault(); uploadBox.classList.remove('drag-over'); handleFiles(e.dataTransfer.files); });
 
 resetBtn.addEventListener('click', () => {
-  currentImage = null; fileInput.value = '';
+  currentImages = []; currentZipBlob = null; fileInput.value = '';
   previewSection.className = 'preview';
   startBtn.disabled = true; resultActions.className = 'result';
+  document.querySelector('.pbox-hd').innerHTML = `原图 <span id="faceBadge" class="tag-face"></span>`;
+  startBtn.textContent = '▶ 开始处理';
   hideStatus();
 });
 
 startBtn.addEventListener('click', async () => {
-  if (!currentImage || (!mpDetector && !fapiReady)) return;
+  if (currentImages.length === 0 || (!mpDetector && !fapiReady)) return;
   startBtn.disabled = true;
-  setStatus('loading', '正在双引擎检测人脸…', true);
 
-  // Let UI render loading status
-  await new Promise(r => setTimeout(r, 60));
-
+  const zip = new JSZip();
+  let totalFaces = 0;
+  const strength = Math.max(0.1, Math.min(20, parseFloat($('blurStrength').value) || 3));
+  const range = Math.max(0, Math.min(100, parseInt($('blurRange').value) || 0));
+  const blurPx = strength * 5;
+  const padding = range / 100;
+  const usedEngines = new Set();
+  
   try {
-    const maxSize = 1024;
-    let scale = 1;
-    let detectImg = currentImage;
-    if (currentImage.naturalWidth > maxSize || currentImage.naturalHeight > maxSize) {
-      scale = Math.max(currentImage.naturalWidth / maxSize, currentImage.naturalHeight / maxSize);
-      const tmpCanvas = document.createElement('canvas');
-      tmpCanvas.width = currentImage.naturalWidth / scale;
-      tmpCanvas.height = currentImage.naturalHeight / scale;
-      const tCtx = tmpCanvas.getContext('2d');
-      tCtx.drawImage(currentImage, 0, 0, tmpCanvas.width, tmpCanvas.height);
-      detectImg = tmpCanvas;
+    for (let i = 0; i < currentImages.length; i++) {
+      const item = currentImages[i];
+      const currentImage = item.img;
+      const progressText = currentImages.length > 1 ? `(${i+1}/${currentImages.length}) ` : '';
+      setStatus('loading', `正在处理 ${progressText}${item.file.name}…`, true);
+      await new Promise(r => setTimeout(r, 60));
+
+      const maxSize = 1024;
+      let scale = 1;
+      let detectImg = currentImage;
+      if (currentImage.naturalWidth > maxSize || currentImage.naturalHeight > maxSize) {
+        scale = Math.max(currentImage.naturalWidth / maxSize, currentImage.naturalHeight / maxSize);
+        const tmpCanvas = document.createElement('canvas');
+        tmpCanvas.width = currentImage.naturalWidth / scale;
+        tmpCanvas.height = currentImage.naturalHeight / scale;
+        const tCtx = tmpCanvas.getContext('2d');
+        tCtx.drawImage(currentImage, 0, 0, tmpCanvas.width, tmpCanvas.height);
+        detectImg = tmpCanvas;
+      }
+
+      const boxes = await detectFaces(detectImg);
+      if (scale !== 1) {
+        for (const box of boxes) {
+          box.x *= scale; box.y *= scale; box.w *= scale; box.h *= scale;
+        }
+      }
+      
+      item.faceCount = boxes.length;
+      totalFaces += item.faceCount;
+      boxes.forEach(b => usedEngines.add(b.engine));
+
+      const canvas = resultCanvas;
+      const ctx = canvas.getContext('2d');
+      // Redraw onto resultCanvas so user sees the progress of the last processed frame
+      canvas.width = currentImage.naturalWidth;
+      canvas.height = currentImage.naturalHeight;
+      ctx.drawImage(currentImage, 0, 0);
+
+      if (item.faceCount > 0) {
+        for (const box of boxes) {
+          const px = box.w * padding, py = box.h * padding;
+          const bx = Math.max(0, box.x - px), by = Math.max(0, box.y - py);
+          const bw = Math.min(canvas.width - bx, box.w + px * 2);
+          const bh = Math.min(canvas.height - by, box.h + py * 2);
+
+          ctx.save();
+          ctx.beginPath();
+          ctx.ellipse(bx + bw / 2, by + bh / 2, bw / 2, bh / 2, 0, 0, Math.PI * 2);
+          ctx.clip();
+          ctx.filter = `blur(${blurPx}px)`;
+          for (let j = 0; j < 5; j++) {
+            ctx.drawImage(currentImage, bx, by, bw, bh, bx, by, bw, bh);
+          }
+          ctx.filter = 'none';
+          ctx.restore();
+        }
+      }
+      
+      const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.92));
+      item.processedBlob = blob;
+      
+      if (currentImages.length === 1) {
+          faceBadge.textContent = item.faceCount > 0 ? `${item.faceCount} 张人脸` : '未检测到人脸';
+      }
+      
+      previewImg.src = item.url;
     }
 
-    const boxes = await detectFaces(detectImg);
-    // Map bounding boxes back to original image scale
-    if (scale !== 1) {
-      for (const box of boxes) {
-        box.x *= scale; box.y *= scale; box.w *= scale; box.h *= scale;
+    if (currentImages.length > 1) {
+      setStatus('loading', '正在打包带走...', true);
+      await new Promise(r => setTimeout(r, 60));
+      for (let idx = 0; idx < currentImages.length; idx++) {
+        const item = currentImages[idx];
+        const namePart = item.file.name.replace(/\.[^/.]+$/, "");
+        // prepend index to avoid overwriting files with the same name
+        zip.file(`${idx}_${namePart}_blurred.jpg`, item.processedBlob);
+      }
+      currentZipBlob = await zip.generateAsync({ type: 'blob' });
+      const enginesArr = [...usedEngines];
+      const engineNames = enginesArr.map(e => e === 'MP' ? 'MediaPipe' : 'SSD').join('+');
+      setStatus('success', `✓ 全部完成 (共处理 ${currentImages.length} 张，检出 ${totalFaces} 脸, via ${engineNames||'None'})`);
+    } else {
+      const enginesArr = [...usedEngines];
+      const engineNames = enginesArr.map(e => e === 'MP' ? 'MediaPipe' : 'SSD').join('+');
+      if (totalFaces === 0) {
+        setStatus('error', '未检测到人脸，输出原图');
+      } else {
+        setStatus('success', `✓ 已模糊 ${totalFaces} 张人脸 (via ${engineNames})`);
       }
     }
-    const count = boxes.length;
-    faceBadge.textContent = count > 0 ? `${count} 张人脸` : '';
 
-    if (count === 0) {
-      setStatus('error', '未检测到人脸，请更换图片');
-      startBtn.disabled = false;
-      return;
-    }
-
-    setStatus('loading', `正在模糊 ${count} 张人脸…`, true);
-    await new Promise(r => setTimeout(r, 60));
-
-    const canvas = resultCanvas;
-    const ctx = canvas.getContext('2d');
-    canvas.width = currentImage.naturalWidth;
-    canvas.height = currentImage.naturalHeight;
-    ctx.drawImage(currentImage, 0, 0);
-
-    const strength = Math.max(0.1, Math.min(20, parseFloat($('blurStrength').value) || 3));
-    const range = Math.max(0, Math.min(100, parseInt($('blurRange').value) || 0));
-    const blurPx = strength * 5;
-    const padding = range / 100;
-
-    for (const box of boxes) {
-      const px = box.w * padding, py = box.h * padding;
-      const bx = Math.max(0, box.x - px), by = Math.max(0, box.y - py);
-      const bw = Math.min(canvas.width - bx, box.w + px * 2);
-      const bh = Math.min(canvas.height - by, box.h + py * 2);
-
-      ctx.save();
-      ctx.beginPath();
-      ctx.ellipse(bx + bw / 2, by + bh / 2, bw / 2, bh / 2, 0, 0, Math.PI * 2);
-      ctx.clip();
-      ctx.filter = `blur(${blurPx}px)`;
-      // 性能优化：模糊滤镜下只重绘含有人脸的小区域，而不是整张4K大图
-      for (let j = 0; j < 5; j++) {
-        ctx.drawImage(currentImage, bx, by, bw, bh, bx, by, bw, bh);
-      }
-      ctx.filter = 'none';
-      ctx.restore();
-    }
-
-    const engines = [...new Set(boxes.map(b => b.engine))];
-    const engineNames = engines.map(e => e === 'MP' ? 'MediaPipe' : 'SSD MobileNet').join('+');
     doneBadge.textContent = '✓ 完成';
-    setStatus('success', `✓ 已模糊 ${count} 张人脸 (via ${engineNames})`);
     resultActions.className = 'result show';
     startBtn.disabled = false;
   } catch (err) {
@@ -379,11 +430,18 @@ startBtn.addEventListener('click', async () => {
 });
 
 downloadBtn.addEventListener('click', () => {
-  const link = document.createElement('a');
   const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-  link.download = `blurred_${ts}.jpg`;
-  link.href = resultCanvas.toDataURL('image/jpeg', 0.92);
-  link.click();
+  const link = document.createElement('a');
+  
+  if (currentImages.length === 1 && currentImages[0].processedBlob) {
+    link.download = `blurred_${ts}.jpg`;
+    link.href = URL.createObjectURL(currentImages[0].processedBlob);
+  } else if (currentZipBlob) {
+    link.download = `FaceBlur_Batch_${ts}.zip`;
+    link.href = URL.createObjectURL(currentZipBlob);
+  }
+  
+  if(link.href) link.click();
 });
 
 loadModels();
