@@ -6,35 +6,16 @@
 <title>FaceBlur · 人脸模糊工具</title>
 <meta name="description" content="一键模糊照片中的人脸，完全本地AI处理，保护隐私">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="lib/face-api.min.js"></script>
 <style>
   *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-
   :root{
-    --bg:#09090f;
-    --card:rgba(255,255,255,0.04);
-    --card-border:rgba(255,255,255,0.07);
-    --card-hover:rgba(255,255,255,0.06);
-    --accent:#7c5cfc;
-    --accent2:#a78bfa;
-    --accent-glow:rgba(124,92,252,0.12);
-    --text:#f0f0f5;
-    --text2:#a0a3b8;
-    --text3:#6b6e85;
-    --green:#2dd4a8;
-    --orange:#fb923c;
-    --red:#f87171;
-    --r:14px;
+    --bg:#09090f;--card:rgba(255,255,255,0.04);--card-border:rgba(255,255,255,0.07);
+    --accent:#7c5cfc;--accent2:#a78bfa;--accent-glow:rgba(124,92,252,0.12);
+    --text:#f0f0f5;--text2:#a0a3b8;--text3:#6b6e85;
+    --green:#2dd4a8;--orange:#fb923c;--red:#f87171;--r:14px;
   }
-
-  body{
-    background:var(--bg);
-    color:var(--text);
-    font-family:'Inter',-apple-system,'PingFang SC','Microsoft YaHei',sans-serif;
-    min-height:100vh;
-    overflow-x:hidden;
-  }
-
-  /* ── BG ── */
+  body{background:var(--bg);color:var(--text);font-family:'Inter',-apple-system,'PingFang SC','Microsoft YaHei',sans-serif;min-height:100vh;overflow-x:hidden}
   .bg{position:fixed;inset:0;pointer-events:none;z-index:0;overflow:hidden}
   .bg .orb{position:absolute;border-radius:50%;filter:blur(100px);opacity:.12}
   .bg .orb-1{width:520px;height:520px;background:#7c5cfc;top:-120px;left:-80px;animation:orbit 25s ease-in-out infinite}
@@ -42,82 +23,40 @@
   .bg .orb-3{width:300px;height:300px;background:#f472b6;top:40%;left:60%;animation:orbit 20s ease-in-out infinite 5s}
   @keyframes orbit{0%,100%{transform:translate(0,0)}33%{transform:translate(50px,30px)}66%{transform:translate(-40px,50px)}}
   .bg .grid{position:absolute;inset:0;background-image:linear-gradient(rgba(255,255,255,.02) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.02) 1px,transparent 1px);background-size:64px 64px}
-
-  /* ── Layout ── */
   .wrap{position:relative;z-index:1;max-width:840px;margin:0 auto;padding:40px 20px 60px}
-
-  /* ── Header ── */
   .hd{display:flex;align-items:center;gap:14px;margin-bottom:36px;animation:fadeUp .5s ease}
   @keyframes fadeUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
-  .hd-icon{
-    width:48px;height:48px;border-radius:14px;flex-shrink:0;
-    background:linear-gradient(135deg,#7c5cfc,#a78bfa);
-    display:flex;align-items:center;justify-content:center;font-size:22px;
-    box-shadow:0 0 32px rgba(124,92,252,.35);
-  }
-  .hd h1{font-size:22px;font-weight:800;letter-spacing:-.5px;
-    background:linear-gradient(90deg,#f0f0f5 30%,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+  .hd-icon{width:48px;height:48px;border-radius:14px;flex-shrink:0;background:linear-gradient(135deg,#7c5cfc,#a78bfa);display:flex;align-items:center;justify-content:center;font-size:22px;box-shadow:0 0 32px rgba(124,92,252,.35)}
+  .hd h1{font-size:22px;font-weight:800;letter-spacing:-.5px;background:linear-gradient(90deg,#f0f0f5 30%,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
   .hd p{font-size:13px;color:var(--text3);margin-top:2px}
   .hd-tag{margin-left:auto;font-size:11px;padding:5px 12px;border-radius:20px;background:rgba(45,212,168,.08);color:var(--green);border:1px solid rgba(45,212,168,.18);display:flex;align-items:center;gap:5px;white-space:nowrap}
   .dot{width:5px;height:5px;border-radius:50%;background:var(--green);animation:blink 2s ease-in-out infinite}
   @keyframes blink{0%,100%{opacity:.3}50%{opacity:1}}
-
-  /* ── Card ── */
   .card{background:var(--card);backdrop-filter:blur(16px);border:1px solid var(--card-border);border-radius:var(--r);transition:border-color .25s}
   .card:hover{border-color:rgba(255,255,255,.1)}
-
-  /* ── Upload ── */
   .upload{padding:52px 24px;text-align:center;cursor:pointer;position:relative;overflow:hidden;animation:fadeUp .5s ease .05s both}
   .upload::before{content:'';position:absolute;inset:1px;border:2px dashed rgba(124,92,252,.18);border-radius:var(--r);pointer-events:none;transition:.3s}
   .upload:hover::before,.upload.drag-over::before{border-color:var(--accent);background:rgba(124,92,252,.03)}
   .upload input{position:absolute;inset:0;opacity:0;cursor:pointer}
-  .upload-circle{
-    width:72px;height:72px;margin:0 auto 16px;border-radius:50%;
-    background:linear-gradient(135deg,var(--accent-glow),rgba(124,92,252,.22));
-    display:flex;align-items:center;justify-content:center;font-size:28px;
-    position:relative;
-  }
+  .upload-circle{width:72px;height:72px;margin:0 auto 16px;border-radius:50%;background:linear-gradient(135deg,var(--accent-glow),rgba(124,92,252,.22));display:flex;align-items:center;justify-content:center;font-size:28px;position:relative}
   .upload-circle::after{content:'';position:absolute;inset:-3px;border-radius:50%;border:2px dashed rgba(124,92,252,.25);animation:spin 15s linear infinite}
   @keyframes spin{to{transform:rotate(360deg)}}
   .upload h3{font-size:15px;font-weight:600;margin-bottom:4px}
   .upload .sub{font-size:12px;color:var(--text3);margin-bottom:16px}
-  .upload-cta{
-    display:inline-flex;align-items:center;gap:6px;padding:9px 22px;
-    background:linear-gradient(135deg,var(--accent),#9b7fff);color:#fff;
-    border-radius:10px;font-size:13px;font-weight:600;pointer-events:none;
-    box-shadow:0 4px 20px rgba(124,92,252,.3);
-  }
-
-  /* ── Settings ── */
+  .upload-cta{display:inline-flex;align-items:center;gap:6px;padding:9px 22px;background:linear-gradient(135deg,var(--accent),#9b7fff);color:#fff;border-radius:10px;font-size:13px;font-weight:600;pointer-events:none;box-shadow:0 4px 20px rgba(124,92,252,.3)}
   .settings{margin-top:14px;padding:22px 24px;animation:fadeUp .5s ease .1s both}
   .stitle{font-size:11px;text-transform:uppercase;letter-spacing:1.2px;color:var(--text3);font-weight:600;margin-bottom:18px;display:flex;align-items:center;gap:6px}
   .stitle::after{content:'';flex:1;height:1px;background:linear-gradient(90deg,var(--card-border),transparent)}
   .srow{display:grid;grid-template-columns:1fr 1fr;gap:20px}
   @media(max-width:520px){.srow{grid-template-columns:1fr}}
   .fld-label{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;color:var(--text2);margin-bottom:8px}
-  .tip-dot{
-    width:15px;height:15px;border-radius:50%;background:rgba(255,255,255,.06);
-    display:inline-flex;align-items:center;justify-content:center;
-    font-size:9px;color:var(--text3);cursor:help;
-    position:relative;
-  }
+  .tip-dot{width:15px;height:15px;border-radius:50%;background:rgba(255,255,255,.06);display:inline-flex;align-items:center;justify-content:center;font-size:9px;color:var(--text3);cursor:help;position:relative}
   .tip-dot:hover::after{content:attr(data-t);position:absolute;bottom:130%;left:50%;transform:translateX(-50%);background:#222;color:#ddd;padding:5px 10px;border-radius:6px;font-size:11px;font-weight:400;white-space:nowrap;z-index:9}
-  .fld input[type="number"]{
-    width:100%;max-width:180px;padding:9px 14px;
-    background:rgba(255,255,255,.04);border:1px solid var(--card-border);border-radius:10px;
-    color:var(--text);font-size:14px;font-family:inherit;outline:none;
-    transition:border-color .2s,box-shadow .2s;
-  }
+  .fld input[type="number"]{width:100%;max-width:180px;padding:9px 14px;background:rgba(255,255,255,.04);border:1px solid var(--card-border);border-radius:10px;color:var(--text);font-size:14px;font-family:inherit;outline:none;transition:border-color .2s,box-shadow .2s}
   .fld input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-glow)}
   .fld-hint{font-size:11px;color:var(--text3);margin-top:4px}
-
-  /* ── Buttons ── */
   .bar{display:flex;gap:10px;margin-top:16px;flex-wrap:wrap;animation:fadeUp .5s ease .15s both}
-  .btn{
-    padding:11px 28px;border-radius:10px;font-size:14px;font-weight:600;
-    border:none;cursor:pointer;display:inline-flex;align-items:center;gap:7px;
-    font-family:inherit;transition:all .2s;
-  }
+  .btn{padding:11px 28px;border-radius:10px;font-size:14px;font-weight:600;border:none;cursor:pointer;display:inline-flex;align-items:center;gap:7px;font-family:inherit;transition:all .2s}
   .btn:active{transform:scale(.97)}
   .btn-go{background:linear-gradient(135deg,var(--accent),#9b7fff);color:#fff;box-shadow:0 4px 20px rgba(124,92,252,.25)}
   .btn-go:hover{box-shadow:0 6px 28px rgba(124,92,252,.35);transform:translateY(-1px)}
@@ -126,16 +65,12 @@
   .btn-dl:hover{background:rgba(45,212,168,.17)}
   .btn-reset{background:rgba(255,255,255,.04);color:var(--text2);border:1px solid var(--card-border)}
   .btn-reset:hover{border-color:rgba(255,255,255,.12)}
-
-  /* ── Status ── */
   .st{margin-top:12px;padding:11px 16px;border-radius:10px;font-size:13px;font-weight:500;display:none;align-items:center;gap:9px;animation:fadeUp .25s ease}
   .st.show{display:flex}
   .st.loading{background:var(--accent-glow);border:1px solid rgba(124,92,252,.12);color:var(--accent2)}
   .st.success{background:rgba(45,212,168,.06);border:1px solid rgba(45,212,168,.12);color:var(--green)}
   .st.error{background:rgba(248,113,113,.06);border:1px solid rgba(248,113,113,.12);color:var(--red)}
   .sp{width:14px;height:14px;border:2px solid rgba(124,92,252,.2);border-top-color:var(--accent2);border-radius:50%;animation:spin .65s linear infinite;flex-shrink:0}
-
-  /* ── Preview ── */
   .preview{display:none;margin-top:16px;gap:14px}
   .preview.show{display:grid;grid-template-columns:1fr 1fr;animation:fadeUp .35s ease}
   @media(max-width:600px){.preview.show{grid-template-columns:1fr}}
@@ -144,47 +79,27 @@
   .pbox img,.pbox canvas{width:100%;display:block;max-height:400px;object-fit:contain;background:#07070d}
   .tag-face{font-size:10px;padding:2px 8px;border-radius:10px;background:rgba(251,146,60,.08);color:var(--orange);border:1px solid rgba(251,146,60,.15);font-weight:600;text-transform:none;letter-spacing:0}
   .tag-done{font-size:10px;color:var(--green);font-weight:600;text-transform:none;letter-spacing:0}
-
-  /* ── Result ── */
   .result{display:none;margin-top:14px;gap:10px}
   .result.show{display:flex;flex-wrap:wrap}
-
-  /* ── Footer ── */
   .ft{margin-top:48px;text-align:center;font-size:11px;color:var(--text3);letter-spacing:.3px}
-
-  ::-webkit-scrollbar{width:5px}
-  ::-webkit-scrollbar-track{background:var(--bg)}
-  ::-webkit-scrollbar-thumb{background:#222;border-radius:3px}
+  ::-webkit-scrollbar{width:5px}::-webkit-scrollbar-track{background:var(--bg)}::-webkit-scrollbar-thumb{background:#222;border-radius:3px}
 </style>
 </head>
 <body>
-
-<div class="bg">
-  <div class="orb orb-1"></div>
-  <div class="orb orb-2"></div>
-  <div class="orb orb-3"></div>
-  <div class="grid"></div>
-</div>
-
+<div class="bg"><div class="orb orb-1"></div><div class="orb orb-2"></div><div class="orb orb-3"></div><div class="grid"></div></div>
 <div class="wrap">
-
   <header class="hd">
     <div class="hd-icon">🛡️</div>
-    <div>
-      <h1>FaceBlur</h1>
-      <p>本地 AI · 一键模糊人脸 · 无限次使用</p>
-    </div>
+    <div><h1>FaceBlur</h1><p>双引擎 AI · 一键模糊人脸 · 无限次使用</p></div>
     <div class="hd-tag"><span class="dot"></span>完全本地</div>
   </header>
-
   <div class="card upload" id="uploadBox">
     <input type="file" id="fileInput" accept="image/*">
     <div class="upload-circle">📷</div>
     <h3>拖放图片到此处</h3>
-    <p class="sub">支持 JPG · PNG · WebP 等格式，图片不离开你的设备</p>
+    <p class="sub">支持 JPG · PNG · WebP · 真人照片和插画均可</p>
     <span class="upload-cta">✦ 选择文件</span>
   </div>
-
   <div class="card settings">
     <div class="stitle">⚙ 设置</div>
     <div class="srow">
@@ -199,107 +114,158 @@
       </div>
     </div>
   </div>
-
-  <div class="bar">
-    <button class="btn btn-go" id="startBtn" disabled>▶ 开始处理</button>
-  </div>
-
-  <div class="st" id="statusBar">
-    <div class="sp" id="spinner" style="display:none"></div>
-    <span id="statusText"></span>
-  </div>
-
+  <div class="bar"><button class="btn btn-go" id="startBtn" disabled>▶ 开始处理</button></div>
+  <div class="st" id="statusBar"><div class="sp" id="spinner" style="display:none"></div><span id="statusText"></span></div>
   <div class="preview" id="previewSection">
-    <div class="card pbox">
-      <div class="pbox-hd">原图 <span id="faceBadge" class="tag-face"></span></div>
-      <img id="previewImg" alt="原图">
-    </div>
-    <div class="card pbox">
-      <div class="pbox-hd">处理结果 <span id="doneBadge" class="tag-done"></span></div>
-      <canvas id="resultCanvas"></canvas>
-    </div>
+    <div class="card pbox"><div class="pbox-hd">原图 <span id="faceBadge" class="tag-face"></span></div><img id="previewImg" alt="原图"></div>
+    <div class="card pbox"><div class="pbox-hd">处理结果 <span id="doneBadge" class="tag-done"></span></div><canvas id="resultCanvas"></canvas></div>
   </div>
-
   <div class="result" id="resultActions">
     <button class="btn btn-dl" id="downloadBtn">⬇ 下载结果</button>
     <button class="btn btn-reset" id="resetBtn">↺ 重新上传</button>
   </div>
-
-  <div class="ft">FaceBlur · Google MediaPipe AI · 图片不上传任何服务器</div>
-
+  <div class="ft">FaceBlur · 双引擎检测 (MediaPipe + SSD MobileNet) · 图片不上传服务器</div>
 </div>
 
 <script type="module">
 import { FaceDetector, FilesetResolver } from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs';
 
-let detector = null;
+let mpDetector = null;   // MediaPipe detector
+let fapiReady = false;   // face-api.js ready flag
 let currentImage = null;
 
-const uploadBox = document.getElementById('uploadBox');
-const fileInput = document.getElementById('fileInput');
-const startBtn = document.getElementById('startBtn');
-const downloadBtn = document.getElementById('downloadBtn');
-const resetBtn = document.getElementById('resetBtn');
-const statusBar = document.getElementById('statusBar');
-const statusText = document.getElementById('statusText');
-const spinnerEl = document.getElementById('spinner');
-const previewSection = document.getElementById('previewSection');
-const previewImg = document.getElementById('previewImg');
-const resultCanvas = document.getElementById('resultCanvas');
-const faceBadge = document.getElementById('faceBadge');
-const doneBadge = document.getElementById('doneBadge');
-const resultActions = document.getElementById('resultActions');
+const $ = id => document.getElementById(id);
+const uploadBox = $('uploadBox'), fileInput = $('fileInput'), startBtn = $('startBtn');
+const downloadBtn = $('downloadBtn'), resetBtn = $('resetBtn');
+const statusBar = $('statusBar'), statusText = $('statusText'), spinnerEl = $('spinner');
+const previewSection = $('previewSection'), previewImg = $('previewImg');
+const resultCanvas = $('resultCanvas'), faceBadge = $('faceBadge');
+const doneBadge = $('doneBadge'), resultActions = $('resultActions');
 
-function setStatus(type, text, showSpinner) {
+function setStatus(type, text, showSp) {
   statusBar.className = 'st show ' + type;
   statusText.textContent = text;
-  spinnerEl.style.display = showSpinner ? 'block' : 'none';
+  spinnerEl.style.display = showSp ? 'block' : 'none';
 }
 function hideStatus() { statusBar.className = 'st'; }
 
-async function loadDetector() {
-  if (detector) return;
-  setStatus('loading', '正在加载 Google MediaPipe 人脸检测模型…', true);
-  try {
-    const filesetResolver = await FilesetResolver.forVisionTasks(
-      'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm'
-    );
-    detector = await FaceDetector.createFromOptions(filesetResolver, {
-      baseOptions: {
-        modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite',
-        delegate: 'GPU'
-      },
-      runningMode: 'IMAGE',
-      minDetectionConfidence: 0.1
-    });
-    setStatus('success', '✓ 模型加载完成');
-    setTimeout(hideStatus, 2000);
-  } catch (e) {
+// ── Load BOTH engines ──
+async function loadModels() {
+  setStatus('loading', '正在加载双引擎人脸检测模型…', true);
+  const promises = [];
+
+  // Engine 1: MediaPipe BlazeFace (full range)
+  promises.push((async () => {
     try {
-      const filesetResolver = await FilesetResolver.forVisionTasks(
+      const fs = await FilesetResolver.forVisionTasks(
         'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm'
       );
-      detector = await FaceDetector.createFromOptions(filesetResolver, {
+      mpDetector = await FaceDetector.createFromOptions(fs, {
         baseOptions: {
           modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite',
-          delegate: 'CPU'
+          delegate: 'GPU'
         },
         runningMode: 'IMAGE',
-        minDetectionConfidence: 0.1
+        minDetectionConfidence: 0.08
       });
-      setStatus('success', '✓ 模型加载完成');
-      setTimeout(hideStatus, 2000);
-    } catch (e2) {
-      setStatus('error', '模型加载失败：' + e2.message);
+      console.log('[Engine1] MediaPipe ready');
+    } catch (e) {
+      try {
+        const fs = await FilesetResolver.forVisionTasks(
+          'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm'
+        );
+        mpDetector = await FaceDetector.createFromOptions(fs, {
+          baseOptions: {
+            modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite',
+            delegate: 'CPU'
+          },
+          runningMode: 'IMAGE',
+          minDetectionConfidence: 0.08
+        });
+        console.log('[Engine1] MediaPipe ready (CPU)');
+      } catch (e2) {
+        console.warn('[Engine1] MediaPipe failed:', e2);
+      }
     }
+  })());
+
+  // Engine 2: face-api.js SSD MobileNet (local models)
+  promises.push((async () => {
+    try {
+      await faceapi.nets.ssdMobilenetv1.loadFromUri('models');
+      fapiReady = true;
+      console.log('[Engine2] face-api.js SSD MobileNet ready');
+    } catch (e) {
+      console.warn('[Engine2] face-api.js failed:', e);
+    }
+  })());
+
+  await Promise.all(promises);
+
+  if (mpDetector || fapiReady) {
+    const engines = [];
+    if (mpDetector) engines.push('MediaPipe');
+    if (fapiReady) engines.push('SSD MobileNet');
+    setStatus('success', `✓ 已加载 ${engines.join(' + ')}`);
+    setTimeout(hideStatus, 2500);
+  } else {
+    setStatus('error', '所有模型加载失败，请检查网络');
   }
 }
 
-function handleFile(file) {
-  if (!file || !file.type.startsWith('image/')) {
-    setStatus('error', '请选择图片文件');
-    return;
+// ── Detect faces using both engines, merge results ──
+async function detectFaces(img) {
+  const allBoxes = [];
+
+  // Engine 1: MediaPipe
+  if (mpDetector) {
+    try {
+      const r = mpDetector.detect(img);
+      for (const d of r.detections) {
+        const b = d.boundingBox;
+        allBoxes.push({ x: b.originX, y: b.originY, w: b.width, h: b.height, score: d.categories[0]?.score || 0, engine: 'MP' });
+      }
+    } catch (e) { console.warn('MediaPipe detect error:', e); }
   }
+
+  // Engine 2: face-api.js (more robust for diverse face types)
+  if (fapiReady) {
+    try {
+      const detections = await faceapi.detectAllFaces(img, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.15 }));
+      for (const d of detections) {
+        allBoxes.push({ x: d.box.x, y: d.box.y, w: d.box.width, h: d.box.height, score: d.score, engine: 'FA' });
+      }
+    } catch (e) { console.warn('face-api detect error:', e); }
+  }
+
+  // Deduplicate overlapping boxes (IoU > 0.4)
+  const final = [];
+  const used = new Set();
+  // Sort by score descending
+  allBoxes.sort((a, b) => b.score - a.score);
+  for (let i = 0; i < allBoxes.length; i++) {
+    if (used.has(i)) continue;
+    final.push(allBoxes[i]);
+    used.add(i);
+    for (let j = i + 1; j < allBoxes.length; j++) {
+      if (used.has(j)) continue;
+      if (iou(allBoxes[i], allBoxes[j]) > 0.4) used.add(j);
+    }
+  }
+  return final;
+}
+
+function iou(a, b) {
+  const x1 = Math.max(a.x, b.x), y1 = Math.max(a.y, b.y);
+  const x2 = Math.min(a.x + a.w, b.x + b.w), y2 = Math.min(a.y + a.h, b.y + b.h);
+  if (x2 <= x1 || y2 <= y1) return 0;
+  const inter = (x2 - x1) * (y2 - y1);
+  const union = a.w * a.h + b.w * b.h - inter;
+  return inter / union;
+}
+
+function handleFile(file) {
+  if (!file || !file.type.startsWith('image/')) { setStatus('error', '请选择图片文件'); return; }
   const reader = new FileReader();
   reader.onload = e => {
     const img = new Image();
@@ -307,12 +273,10 @@ function handleFile(file) {
       currentImage = img;
       previewImg.src = e.target.result;
       previewSection.className = 'preview show';
-      faceBadge.textContent = '';
-      doneBadge.textContent = '';
+      faceBadge.textContent = ''; doneBadge.textContent = '';
       resultCanvas.getContext('2d').clearRect(0, 0, resultCanvas.width, resultCanvas.height);
       startBtn.disabled = false;
       resultActions.className = 'result';
-      loadDetector();
     };
     img.src = e.target.result;
   };
@@ -322,96 +286,74 @@ function handleFile(file) {
 fileInput.addEventListener('change', e => handleFile(e.target.files[0]));
 uploadBox.addEventListener('dragover', e => { e.preventDefault(); uploadBox.classList.add('drag-over'); });
 uploadBox.addEventListener('dragleave', () => uploadBox.classList.remove('drag-over'));
-uploadBox.addEventListener('drop', e => {
-  e.preventDefault();
-  uploadBox.classList.remove('drag-over');
-  handleFile(e.dataTransfer.files[0]);
-});
+uploadBox.addEventListener('drop', e => { e.preventDefault(); uploadBox.classList.remove('drag-over'); handleFile(e.dataTransfer.files[0]); });
 
 resetBtn.addEventListener('click', () => {
-  currentImage = null;
-  fileInput.value = '';
+  currentImage = null; fileInput.value = '';
   previewSection.className = 'preview';
-  startBtn.disabled = true;
-  resultActions.className = 'result';
+  startBtn.disabled = true; resultActions.className = 'result';
   hideStatus();
 });
 
-startBtn.addEventListener('click', () => {
-  if (!currentImage || !detector) return;
+startBtn.addEventListener('click', async () => {
+  if (!currentImage || (!mpDetector && !fapiReady)) return;
   startBtn.disabled = true;
-  setStatus('loading', '正在检测人脸…', true);
+  setStatus('loading', '正在双引擎检测人脸…', true);
 
-  // Use setTimeout to let UI render the loading status before blocking detection
-  setTimeout(() => {
-    try {
-      const result = detector.detect(currentImage);
-      const detections = result.detections;
-      const count = detections.length;
-      faceBadge.textContent = count > 0 ? `${count} 张人脸` : '';
+  // Let UI render loading status
+  await new Promise(r => setTimeout(r, 60));
 
-      if (count === 0) {
-        setStatus('error', '未检测到人脸，请更换图片（注意：仅支持真人照片）');
-        startBtn.disabled = false;
-        return;
-      }
+  try {
+    const boxes = await detectFaces(currentImage);
+    const count = boxes.length;
+    faceBadge.textContent = count > 0 ? `${count} 张人脸` : '';
 
-      setStatus('loading', `正在模糊 ${count} 张人脸…`, true);
-
-      // Let UI update, then do the heavy canvas work
-      setTimeout(() => {
-        try {
-          const canvas = resultCanvas;
-          const ctx = canvas.getContext('2d');
-          canvas.width = currentImage.naturalWidth;
-          canvas.height = currentImage.naturalHeight;
-          ctx.drawImage(currentImage, 0, 0);
-
-          const strength = Math.max(1, Math.min(20, parseInt(document.getElementById('blurStrength').value) || 3));
-          const range = Math.max(0, Math.min(100, parseInt(document.getElementById('blurRange').value) || 0));
-          const blurPx = strength * 5;
-          const padding = range / 100;
-
-          for (const det of detections) {
-            const bb = det.boundingBox;
-            const x = bb.originX;
-            const y = bb.originY;
-            const w = bb.width;
-            const h = bb.height;
-
-            const px = w * padding;
-            const py = h * padding;
-            const bx = Math.max(0, x - px);
-            const by = Math.max(0, y - py);
-            const bw = Math.min(canvas.width - bx, w + px * 2);
-            const bh = Math.min(canvas.height - by, h + py * 2);
-
-            ctx.save();
-            ctx.beginPath();
-            ctx.ellipse(bx + bw / 2, by + bh / 2, bw / 2, bh / 2, 0, 0, Math.PI * 2);
-            ctx.clip();
-            ctx.filter = `blur(${blurPx}px)`;
-            for (let j = 0; j < 3; j++) {
-              ctx.drawImage(currentImage, 0, 0, canvas.width, canvas.height);
-            }
-            ctx.filter = 'none';
-            ctx.restore();
-          }
-
-          doneBadge.textContent = '✓ 完成';
-          setStatus('success', `✓ 已模糊 ${count} 张人脸`);
-          resultActions.className = 'result show';
-          startBtn.disabled = false;
-        } catch (err) {
-          setStatus('error', '处理出错：' + err.message);
-          startBtn.disabled = false;
-        }
-      }, 50);
-    } catch (err) {
-      setStatus('error', '处理出错：' + err.message);
+    if (count === 0) {
+      setStatus('error', '未检测到人脸，请更换图片');
       startBtn.disabled = false;
+      return;
     }
-  }, 50);
+
+    setStatus('loading', `正在模糊 ${count} 张人脸…`, true);
+    await new Promise(r => setTimeout(r, 60));
+
+    const canvas = resultCanvas;
+    const ctx = canvas.getContext('2d');
+    canvas.width = currentImage.naturalWidth;
+    canvas.height = currentImage.naturalHeight;
+    ctx.drawImage(currentImage, 0, 0);
+
+    const strength = Math.max(1, Math.min(20, parseInt($('blurStrength').value) || 3));
+    const range = Math.max(0, Math.min(100, parseInt($('blurRange').value) || 0));
+    const blurPx = strength * 5;
+    const padding = range / 100;
+
+    for (const box of boxes) {
+      const px = box.w * padding, py = box.h * padding;
+      const bx = Math.max(0, box.x - px), by = Math.max(0, box.y - py);
+      const bw = Math.min(canvas.width - bx, box.w + px * 2);
+      const bh = Math.min(canvas.height - by, box.h + py * 2);
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.ellipse(bx + bw / 2, by + bh / 2, bw / 2, bh / 2, 0, 0, Math.PI * 2);
+      ctx.clip();
+      ctx.filter = `blur(${blurPx}px)`;
+      for (let j = 0; j < 3; j++) ctx.drawImage(currentImage, 0, 0, canvas.width, canvas.height);
+      ctx.filter = 'none';
+      ctx.restore();
+    }
+
+    const engines = [...new Set(boxes.map(b => b.engine))];
+    const engineNames = engines.map(e => e === 'MP' ? 'MediaPipe' : 'SSD MobileNet').join('+');
+    doneBadge.textContent = '✓ 完成';
+    setStatus('success', `✓ 已模糊 ${count} 张人脸 (via ${engineNames})`);
+    resultActions.className = 'result show';
+    startBtn.disabled = false;
+  } catch (err) {
+    setStatus('error', '处理出错：' + err.message);
+    startBtn.disabled = false;
+  }
 });
 
 downloadBtn.addEventListener('click', () => {
@@ -422,7 +364,7 @@ downloadBtn.addEventListener('click', () => {
   link.click();
 });
 
-loadDetector();
+loadModels();
 </script>
 </body>
 </html>
