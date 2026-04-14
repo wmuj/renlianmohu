@@ -279,23 +279,38 @@ function handleFiles(files) {
   resultCanvas.getContext('2d').clearRect(0, 0, resultCanvas.width, resultCanvas.height);
   startBtn.disabled = true;
   resultActions.className = 'result';
-  setStatus('loading', `正在读取 ${validFiles.length} 张图片…`, true);
+  let processingFiles = validFiles;
+  let limitWarning = false;
+  if (processingFiles.length > 50) {
+    processingFiles = processingFiles.slice(0, 50);
+    limitWarning = true;
+  }
 
-  validFiles.forEach(file => {
+  if (limitWarning) {
+    setStatus('error', `⚠️ 为防止浏览器崩溃，单次首选前50张！正在读取…`, true);
+  } else {
+    setStatus('loading', `正在读取 ${processingFiles.length} 张图片…`, true);
+  }
+
+  processingFiles.forEach(file => {
     const url = URL.createObjectURL(file);
     const img = new Image();
     img.onload = () => {
       currentImages.push({ file, img, url, processedBlob: null, faceCount: 0 });
       loaded++;
-      if (loaded === validFiles.length) {
+      if (loaded === processingFiles.length) {
         previewImg.src = currentImages[0].url;
-        const titleText = validFiles.length > 1 ? `原图 (共${validFiles.length}张)` : '原图';
+        const titleText = processingFiles.length > 1 ? `原图 (共${processingFiles.length}张)` : '原图';
         document.querySelector('.pbox-hd').innerHTML = `${titleText} <span id="faceBadge" class="tag-face"></span>`;
         previewSection.className = 'preview show';
         startBtn.disabled = false;
-        startBtn.textContent = validFiles.length > 1 ? `▶ 批量处理 (${validFiles.length})` : '▶ 开始处理';
-        setStatus('success', `✓ 已选择 ${validFiles.length} 张图片`);
-        setTimeout(hideStatus, 2000);
+        startBtn.textContent = processingFiles.length > 1 ? `▶ 批量处理 (${processingFiles.length})` : '▶ 开始处理';
+        if (!limitWarning) {
+          setStatus('success', `✓ 已选择 ${processingFiles.length} 张图片`);
+          setTimeout(hideStatus, 2000);
+        } else {
+          setStatus('error', `⚠️ 已截断为前 50 张测试`);
+        }
       }
     };
     img.src = url;
