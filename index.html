@@ -383,6 +383,13 @@ startBtn.addEventListener('click', async () => {
   const blurPx = strength * 5;
   const padding = range / 100;
   const usedEngines = new Set();
+
+  // ── 让出主线程：优先用 scheduler.yield()，降级到 requestAnimationFrame ──
+  // 每次关键操作后调用，让浏览器更新 UI，防止卡死
+  const yieldToMain = () =>
+    typeof scheduler !== 'undefined' && scheduler.yield
+      ? scheduler.yield()
+      : new Promise(r => requestAnimationFrame(r));
   
   // ── 大图模糊优化：缩小→高斯滤波→放大，比重复 drawImage 快 ──
   function applyBlurToRegion(ctx, srcImage, bx, by, bw, bh, blurPx) {
@@ -414,8 +421,8 @@ startBtn.addEventListener('click', async () => {
       const currentImage = item.img;
       const progressText = currentImages.length > 1 ? `(${i+1}/${currentImages.length}) ` : '';
       setStatus('loading', `正在处理 ${progressText}${item.file.name}…`, true);
-      setProgress(i, currentImages.length);  // 更新进度条
-      await new Promise(r => setTimeout(r, 60));
+      setProgress(i, currentImages.length);
+      await yieldToMain();  // 让出主线程，确保状态栏和进度条刷新到屏幕
 
       const maxSize = 1024;
       let scale = 1;
@@ -431,6 +438,7 @@ startBtn.addEventListener('click', async () => {
       }
 
       const boxes = await detectFaces(detectImg);
+      await yieldToMain();  // AI 检测完成后让出，防止检测卡顿
       if (scale !== 1) {
         for (const box of boxes) {
           box.x *= scale; box.y *= scale; box.w *= scale; box.h *= scale;
@@ -458,6 +466,8 @@ startBtn.addEventListener('click', async () => {
         }
       }
       
+      // Canvas 渲染完成后让出主线程，再进行 toBlob 编码
+      await yieldToMain();
       // 输出格式保留：PNG 图片输出 PNG（保留透明通道），其余输出 JPEG
       const isPng = item.file.type === 'image/png';
       const outMime = isPng ? 'image/png' : 'image/jpeg';
