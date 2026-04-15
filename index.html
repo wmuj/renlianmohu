@@ -304,6 +304,10 @@ function handleFiles(files) {
   const validFiles = Array.from(files).filter(f => f.type.startsWith('image/'));
   if (validFiles.length === 0) { setStatus('error', '请选择图片文件'); return; }
 
+  // 释放可能存在的旧 Object URL 防止内存泄漏
+  if (currentImages && currentImages.length > 0) {
+    currentImages.forEach(item => { if (item.url) URL.revokeObjectURL(item.url); });
+  }
   currentImages = [];
   currentZipBlob = null;
   let loaded = 0;
@@ -328,25 +332,46 @@ function handleFiles(files) {
   processingFiles.forEach(file => {
     const url = URL.createObjectURL(file);
     const img = new Image();
-    img.onload = () => {
-      currentImages.push({ file, img, url, processedBlob: null, faceCount: 0 });
-      loaded++;
+
+    const checkFinished = () => {
       if (loaded === processingFiles.length) {
+        if (currentImages.length === 0) {
+          setStatus('error', '未能成功读取任何图片，被选中文件可能已损坏');
+          return;
+        }
         previewImg.src = currentImages[0].url;
-        const titleText = processingFiles.length > 1 ? `原图 (共${processingFiles.length}张)` : '原图';
+        const count = currentImages.length;
+        const titleText = count > 1 ? `原图 (共${count}张)` : '原图';
         // 只更新文字节点，不重建 DOM，保留 faceBadge 引用有效性
         document.querySelector('.pbox-hd').firstChild.textContent = titleText + ' ';
         previewSection.className = 'preview show';
         startBtn.disabled = false;
-        startBtn.textContent = processingFiles.length > 1 ? `▶ 批量处理 (${processingFiles.length})` : '▶ 开始处理';
-        if (!limitWarning) {
-          setStatus('success', `✓ 已选择 ${processingFiles.length} 张图片`);
-          setTimeout(hideStatus, 2000);
+        startBtn.textContent = count > 1 ? `▶ 批量处理 (${count})` : '▶ 开始处理';
+        
+        if (limitWarning) {
+          setStatus('error', `⚠️ 数量过多，为防崩溃已截断为前 50 张进行保护`);
+        } else if (count >= 10) {
+          setStatus('loading', `⚠️ 已选择 ${count} 张，批量处理可能需要较长等待时间`, false);
         } else {
-          setStatus('error', `⚠️ 已截断为前 50 张测试`);
+          setStatus('success', `✓ 已选择 ${count} 张图片`);
+          setTimeout(hideStatus, 2000);
         }
       }
     };
+
+    img.onload = () => {
+      currentImages.push({ file, img, url, processedBlob: null, faceCount: 0 });
+      loaded++;
+      checkFinished();
+    };
+
+    img.onerror = () => {
+      console.warn(`[Skip] 加载失败，由于文件损坏跳过: ${file.name}`);
+      URL.revokeObjectURL(url);
+      loaded++;
+      checkFinished();
+    };
+
     img.src = url;
   });
 }
@@ -384,39 +409,60 @@ startBtn.addEventListener('click', async () => {
   const padding = range / 100;
   const usedEngines = new Set();
 
-  // ── 让出主线程：优先用 scheduler.yield()，降级到 requestAnimationFrame ──
-  // 每次关键操作后调用，让浏览器更新 UI，防止卡死
+  // ── 让出主线程：优先用 scheduler.yield()，降级到 setTimeout ──
+  // 使用 setTimeout(0) 能真正将控制权交还给事件循环，避免 requestAnimationFrame 带来的 UI 假死
   const yieldToMain = () =>
     typeof scheduler !== 'undefined' && scheduler.yield
       ? scheduler.yield()
-      : new Promise(r => requestAnimationFrame(r));
+      : new Promise(r => setTimeout(r, 0));
   
+  // 在循环外部复用临时 Canvas，极大地减少垃圾回收(GC)压力
+  const sharedTmpCanvas = document.createElement('canvas');
+  const sharedTmpCtx = sharedTmpCanvas.getContext('2d', { willReadFrequently: true });
+  
+  const sharedDetectCanvas = document.createElement('canvas');
+  const sharedDetectCtx = sharedDetectCanvas.getContext('2d', { willReadFrequently: true });
+
   // ── 大图模糊优化：缩小→高斯滤波→放大，比重复 drawImage 快 ──
   function applyBlurToRegion(ctx, srcImage, bx, by, bw, bh, blurPx) {
-    // 缩放因子：模糊半径越大，缩放比越低（最小 1/8）
     const scaleFactor = Math.max(1/8, Math.min(1, 16 / blurPx));
-    const sw = Math.max(1, Math.round(bw * scaleFactor));
-    const sh = Math.max(1, Math.round(bh * scaleFactor));
-    // 把人脸区域缩小到临时 canvas
-    const tmp = document.createElement('canvas');
-    tmp.width = sw; tmp.height = sh;
-    const tCtx = tmp.getContext('2d');
-    tCtx.drawImage(srcImage, bx, by, bw, bh, 0, 0, sw, sh);
-    // 在缩小后的尺寸上施加模糊（同等视觉效果，像素数更少）
+    
+    // 获取源图像尺寸 (兼容 img 与 canvas)
+    const srcWidth = srcImage.naturalWidth || srcImage.width;
+    const srcHeight = srcImage.naturalHeight || srcImage.height;
+    
+    // 限制源区域在图片范围内，避免坐标越界导致部分浏览器 drawImage 抛出异常
+    const sX = Math.max(0, bx);
+    const sY = Math.max(0, by);
+    const sW = Math.min(srcWidth - sX, bx + bw - sX);
+    const sH = Math.min(srcHeight - sY, by + bh - sY);
+    
+    if (sW <= 0 || sH <= 0) return;
+
+    const sw = Math.max(1, Math.round(sW * scaleFactor));
+    const sh = Math.max(1, Math.round(sH * scaleFactor));
+
+    // 使用复用的共享画布缩小人脸区域
+    sharedTmpCanvas.width = sw; sharedTmpCanvas.height = sh;
+    sharedTmpCtx.clearRect(0, 0, sw, sh);
+    sharedTmpCtx.drawImage(srcImage, sX, sY, sW, sH, 0, 0, sw, sh);
+
     const blurOnSmall = blurPx * scaleFactor;
     ctx.save();
     ctx.beginPath();
+    // 使用传入的不截断的原始边界计算中心点，修复边缘人脸遮罩偏移的问题
     ctx.ellipse(bx + bw / 2, by + bh / 2, bw / 2, bh / 2, 0, 0, Math.PI * 2);
     ctx.clip();
     ctx.filter = `blur(${blurOnSmall}px)`;
-    // 把缩小后的模糊图放大回原始区域，获得自然的模糊效果
-    ctx.drawImage(tmp, 0, 0, sw, sh, bx, by, bw, bh);
+    // 放回对应截断后所处的图片位置
+    ctx.drawImage(sharedTmpCanvas, 0, 0, sw, sh, sX, sY, sW, sH);
     ctx.filter = 'none';
     ctx.restore();
   }
 
   try {
     for (let i = 0; i < currentImages.length; i++) {
+        try {
       const item = currentImages[i];
       const currentImage = item.img;
       const progressText = currentImages.length > 1 ? `(${i+1}/${currentImages.length}) ` : '';
@@ -429,12 +475,11 @@ startBtn.addEventListener('click', async () => {
       let detectImg = currentImage;
       if (currentImage.naturalWidth > maxSize || currentImage.naturalHeight > maxSize) {
         scale = Math.max(currentImage.naturalWidth / maxSize, currentImage.naturalHeight / maxSize);
-        const tmpCanvas = document.createElement('canvas');
-        tmpCanvas.width = Math.round(currentImage.naturalWidth / scale);
-        tmpCanvas.height = Math.round(currentImage.naturalHeight / scale);
-        const tCtx = tmpCanvas.getContext('2d');
-        tCtx.drawImage(currentImage, 0, 0, tmpCanvas.width, tmpCanvas.height);
-        detectImg = tmpCanvas;
+        sharedDetectCanvas.width = Math.round(currentImage.naturalWidth / scale);
+        sharedDetectCanvas.height = Math.round(currentImage.naturalHeight / scale);
+        sharedDetectCtx.clearRect(0, 0, sharedDetectCanvas.width, sharedDetectCanvas.height);
+        sharedDetectCtx.drawImage(currentImage, 0, 0, sharedDetectCanvas.width, sharedDetectCanvas.height);
+        detectImg = sharedDetectCanvas;
       }
 
       const boxes = await detectFaces(detectImg);
@@ -458,23 +503,29 @@ startBtn.addEventListener('click', async () => {
       if (item.faceCount > 0) {
         for (const box of boxes) {
           const px = box.w * padding, py = box.h * padding;
-          const bx = Math.max(0, box.x - px), by = Math.max(0, box.y - py);
-          const bw = Math.min(canvas.width - bx, box.w + px * 2);
-          const bh = Math.min(canvas.height - by, box.h + py * 2);
+          // 不在这里使用 Math.max/min 强行裁剪，以免打断真正的椭圆圆心计算
+          const bx = box.x - px, by = box.y - py;
+          const bw = box.w + px * 2, bh = box.h + py * 2;
           // 使用优化后的模糊算法
           applyBlurToRegion(ctx, currentImage, bx, by, bw, bh, blurPx);
         }
+        
+        // Canvas 渲染完成后让出主线程，再进行 toBlob 编码
+        await yieldToMain();
+        // 输出格式保留：PNG 图片输出 PNG（保留透明通道），其余输出 JPEG
+        const isPng = item.file.type === 'image/png';
+        const outMime = isPng ? 'image/png' : 'image/jpeg';
+        const outQuality = isPng ? undefined : 0.92;
+        const blob = await new Promise(resolve => canvas.toBlob(resolve, outMime, outQuality));
+        item.processedBlob = blob;
+        item.outExt = isPng ? 'png' : 'jpg';  // 保存扩展名供下载用
+      } else {
+        // 极速无损优化：未检出人脸时，跳过 Canvas 耗时重压缩，直接使用原文件打包下载
+        // (UI 画布仍保留原图预览以便比对)
+        item.processedBlob = item.file;
+        const parts = item.file.name.split('.');
+        item.outExt = parts.length > 1 ? parts.pop().toLowerCase() : (item.file.type === 'image/png' ? 'png' : 'jpg');
       }
-      
-      // Canvas 渲染完成后让出主线程，再进行 toBlob 编码
-      await yieldToMain();
-      // 输出格式保留：PNG 图片输出 PNG（保留透明通道），其余输出 JPEG
-      const isPng = item.file.type === 'image/png';
-      const outMime = isPng ? 'image/png' : 'image/jpeg';
-      const outQuality = isPng ? undefined : 0.92;
-      const blob = await new Promise(resolve => canvas.toBlob(resolve, outMime, outQuality));
-      item.processedBlob = blob;
-      item.outExt = isPng ? 'png' : 'jpg';  // 保存扩展名供下载用
       
       if (currentImages.length === 1) {
         faceBadge.textContent = item.faceCount > 0 ? `${item.faceCount} 张人脸` : '未检测到人脸';
@@ -482,6 +533,12 @@ startBtn.addEventListener('click', async () => {
       
       previewImg.src = item.url;
       setProgress(i + 1, currentImages.length);  // 完成一张，更新进度
+      
+      } catch (innerErr) {
+        console.warn(`[Skip] 第 ${i+1} 张图处理异常:`, innerErr);
+        // 单图异常不中断整体批次，标记异常并跳过处理部分
+        if (currentImages[i]) currentImages[i].faceCount = 0;
+      }
     }
 
     if (currentImages.length > 1) {
@@ -491,7 +548,9 @@ startBtn.addEventListener('click', async () => {
         const item = currentImages[idx];
         const namePart = item.file.name.replace(/\.[^/.]+$/, '');
         const ext = item.outExt || 'jpg';  // 使用保存的扩展名
-        zip.file(`${idx}_${namePart}_blurred.${ext}`, item.processedBlob);
+        // 人性化体验：如果有未检出脸的图片，打包时后缀标明，避免用户以为模糊失败
+        const suffix = item.faceCount > 0 ? '_blurred' : '_original';
+        zip.file(`${idx}_${namePart}${suffix}.${ext}`, item.processedBlob);
       }
       currentZipBlob = await zip.generateAsync({ type: 'blob' });
       const enginesArr = [...usedEngines];
