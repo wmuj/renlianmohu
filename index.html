@@ -82,7 +82,16 @@
   .tag-done{font-size:10px;color:var(--green);font-weight:600;text-transform:none;letter-spacing:0}
   .result{display:none;margin-top:14px;gap:10px}
   .result.show{display:flex;flex-wrap:wrap}
-  .ft{margin-top:48px;text-align:center;font-size:11px;color:var(--text3);letter-spacing:.3px}
+  /* ── 进度条 ── */
+  .prog-wrap{display:none;margin-top:10px;animation:fadeUp .25s ease}
+  .prog-wrap.show{display:block}
+  .prog-bar-bg{height:5px;border-radius:3px;background:rgba(255,255,255,.06);overflow:hidden}
+  .prog-bar-fill{height:100%;border-radius:3px;background:linear-gradient(90deg,var(--accent),#a78bfa);width:0%;transition:width .3s ease}
+  .prog-label{font-size:11px;color:var(--text3);margin-top:5px;text-align:right}
+  .ft{margin-top:48px;padding-bottom:24px;text-align:center;font-size:11px;color:var(--text3);letter-spacing:.3px;line-height:2}
+  .ft a{color:var(--accent2);text-decoration:none;border-bottom:1px solid rgba(167,139,250,.25);transition:color .2s,border-color .2s}
+  .ft a:hover{color:#fff;border-color:rgba(167,139,250,.6)}
+  .ft-divider{margin:0 8px;opacity:.3}
   ::-webkit-scrollbar{width:5px}::-webkit-scrollbar-track{background:var(--bg)}::-webkit-scrollbar-thumb{background:#222;border-radius:3px}
 </style>
 </head>
@@ -110,13 +119,17 @@
       </div>
       <div class="fld">
         <div class="fld-label">模糊范围 <span class="tip-dot" data-t="人脸周围扩展区域 0-100">?</span></div>
-        <input type="number" id="blurRange" value="0" min="0" max="100" placeholder="0 - 100">
+        <input type="number" id="blurRange" value="0" min="0" max="100" step="1" placeholder="0 - 100">
         <div class="fld-hint">0 - 100</div>
       </div>
     </div>
   </div>
   <div class="bar"><button class="btn btn-go" id="startBtn" disabled>▶ 开始处理</button></div>
   <div class="st" id="statusBar"><div class="sp" id="spinner" style="display:none"></div><span id="statusText"></span></div>
+  <div class="prog-wrap" id="progWrap">
+    <div class="prog-bar-bg"><div class="prog-bar-fill" id="progFill"></div></div>
+    <div class="prog-label" id="progLabel"></div>
+  </div>
   <div class="preview" id="previewSection">
     <div class="card pbox"><div class="pbox-hd">原图 <span id="faceBadge" class="tag-face"></span></div><img id="previewImg" alt="原图"></div>
     <div class="card pbox"><div class="pbox-hd">处理结果 <span id="doneBadge" class="tag-done"></span></div><canvas id="resultCanvas"></canvas></div>
@@ -125,7 +138,16 @@
     <button class="btn btn-dl" id="downloadBtn">⬇ 下载结果</button>
     <button class="btn btn-reset" id="resetBtn">↺ 重新上传</button>
   </div>
-  <div class="ft">FaceBlur · 双引擎检测 (MediaPipe + SSD MobileNet) · 图片不上传服务器</div>
+  <footer class="ft">
+    <div>FaceBlur · 双引擎检测 (MediaPipe + SSD MobileNet) · 图片不上传服务器</div>
+    <div>
+      <a href="https://github.com/wmuj/renlianmohu" target="_blank" rel="noopener">⭐ GitHub 仓库</a>
+      <span class="ft-divider">|</span>
+      作者：<a href="https://github.com/wmuj" target="_blank" rel="noopener">码上全栈创享家</a>
+      <span class="ft-divider">|</span>
+      MIT License
+    </div>
+  </footer>
 </div>
 
 <script type="module">
@@ -143,6 +165,17 @@ const statusBar = $('statusBar'), statusText = $('statusText'), spinnerEl = $('s
 const previewSection = $('previewSection'), previewImg = $('previewImg');
 const resultCanvas = $('resultCanvas'), faceBadge = $('faceBadge');
 const doneBadge = $('doneBadge'), resultActions = $('resultActions');
+const progWrap = $('progWrap'), progFill = $('progFill'), progLabel = $('progLabel');
+
+// 进度条控制
+function setProgress(current, total) {
+  if (total <= 1) { progWrap.className = 'prog-wrap'; return; }
+  const pct = Math.round((current / total) * 100);
+  progWrap.className = 'prog-wrap show';
+  progFill.style.width = pct + '%';
+  progLabel.textContent = `${current} / ${total}  (${pct}%)`;
+}
+function hideProgress() { progWrap.className = 'prog-wrap'; }
 
 function setStatus(type, text, showSp) {
   statusBar.className = 'st show ' + type;
@@ -301,7 +334,8 @@ function handleFiles(files) {
       if (loaded === processingFiles.length) {
         previewImg.src = currentImages[0].url;
         const titleText = processingFiles.length > 1 ? `原图 (共${processingFiles.length}张)` : '原图';
-        document.querySelector('.pbox-hd').innerHTML = `${titleText} <span id="faceBadge" class="tag-face"></span>`;
+        // 只更新文字节点，不重建 DOM，保留 faceBadge 引用有效性
+        document.querySelector('.pbox-hd').firstChild.textContent = titleText + ' ';
         previewSection.className = 'preview show';
         startBtn.disabled = false;
         startBtn.textContent = processingFiles.length > 1 ? `▶ 批量处理 (${processingFiles.length})` : '▶ 开始处理';
@@ -318,17 +352,24 @@ function handleFiles(files) {
 }
 
 fileInput.addEventListener('change', e => handleFiles(e.target.files));
-uploadBox.addEventListener('dragover', e => { e.preventDefault(); uploadBox.classList.add('drag-over'); });
-uploadBox.addEventListener('dragleave', () => uploadBox.classList.remove('drag-over'));
-uploadBox.addEventListener('drop', e => { e.preventDefault(); uploadBox.classList.remove('drag-over'); handleFiles(e.dataTransfer.files); });
+
+// 拖拽闪烁修复：用计数器代替 dragenter/dragleave 简单切换
+let dragCounter = 0;
+uploadBox.addEventListener('dragenter', e => { e.preventDefault(); dragCounter++; uploadBox.classList.add('drag-over'); });
+uploadBox.addEventListener('dragleave', () => { dragCounter--; if (dragCounter <= 0) { dragCounter = 0; uploadBox.classList.remove('drag-over'); } });
+uploadBox.addEventListener('dragover', e => e.preventDefault());
+uploadBox.addEventListener('drop', e => { e.preventDefault(); dragCounter = 0; uploadBox.classList.remove('drag-over'); handleFiles(e.dataTransfer.files); });
 
 resetBtn.addEventListener('click', () => {
+  // 释放所有 Object URL，防止内存泄漏
+  currentImages.forEach(item => { if (item.url) URL.revokeObjectURL(item.url); });
   currentImages = []; currentZipBlob = null; fileInput.value = '';
   previewSection.className = 'preview';
   startBtn.disabled = true; resultActions.className = 'result';
-  document.querySelector('.pbox-hd').innerHTML = `原图 <span id="faceBadge" class="tag-face"></span>`;
+  document.querySelector('.pbox-hd').firstChild.textContent = '原图 ';
+  faceBadge.textContent = '';
   startBtn.textContent = '▶ 开始处理';
-  hideStatus();
+  hideStatus(); hideProgress();
 });
 
 startBtn.addEventListener('click', async () => {
@@ -343,12 +384,37 @@ startBtn.addEventListener('click', async () => {
   const padding = range / 100;
   const usedEngines = new Set();
   
+  // ── 大图模糊优化：缩小→高斯滤波→放大，比重复 drawImage 快 ──
+  function applyBlurToRegion(ctx, srcImage, bx, by, bw, bh, blurPx) {
+    // 缩放因子：模糊半径越大，缩放比越低（最小 1/8）
+    const scaleFactor = Math.max(1/8, Math.min(1, 16 / blurPx));
+    const sw = Math.max(1, Math.round(bw * scaleFactor));
+    const sh = Math.max(1, Math.round(bh * scaleFactor));
+    // 把人脸区域缩小到临时 canvas
+    const tmp = document.createElement('canvas');
+    tmp.width = sw; tmp.height = sh;
+    const tCtx = tmp.getContext('2d');
+    tCtx.drawImage(srcImage, bx, by, bw, bh, 0, 0, sw, sh);
+    // 在缩小后的尺寸上施加模糊（同等视觉效果，像素数更少）
+    const blurOnSmall = blurPx * scaleFactor;
+    ctx.save();
+    ctx.beginPath();
+    ctx.ellipse(bx + bw / 2, by + bh / 2, bw / 2, bh / 2, 0, 0, Math.PI * 2);
+    ctx.clip();
+    ctx.filter = `blur(${blurOnSmall}px)`;
+    // 把缩小后的模糊图放大回原始区域，获得自然的模糊效果
+    ctx.drawImage(tmp, 0, 0, sw, sh, bx, by, bw, bh);
+    ctx.filter = 'none';
+    ctx.restore();
+  }
+
   try {
     for (let i = 0; i < currentImages.length; i++) {
       const item = currentImages[i];
       const currentImage = item.img;
       const progressText = currentImages.length > 1 ? `(${i+1}/${currentImages.length}) ` : '';
       setStatus('loading', `正在处理 ${progressText}${item.file.name}…`, true);
+      setProgress(i, currentImages.length);  // 更新进度条
       await new Promise(r => setTimeout(r, 60));
 
       const maxSize = 1024;
@@ -357,8 +423,8 @@ startBtn.addEventListener('click', async () => {
       if (currentImage.naturalWidth > maxSize || currentImage.naturalHeight > maxSize) {
         scale = Math.max(currentImage.naturalWidth / maxSize, currentImage.naturalHeight / maxSize);
         const tmpCanvas = document.createElement('canvas');
-        tmpCanvas.width = currentImage.naturalWidth / scale;
-        tmpCanvas.height = currentImage.naturalHeight / scale;
+        tmpCanvas.width = Math.round(currentImage.naturalWidth / scale);
+        tmpCanvas.height = Math.round(currentImage.naturalHeight / scale);
         const tCtx = tmpCanvas.getContext('2d');
         tCtx.drawImage(currentImage, 0, 0, tmpCanvas.width, tmpCanvas.height);
         detectImg = tmpCanvas;
@@ -377,7 +443,6 @@ startBtn.addEventListener('click', async () => {
 
       const canvas = resultCanvas;
       const ctx = canvas.getContext('2d');
-      // Redraw onto resultCanvas so user sees the progress of the last processed frame
       canvas.width = currentImage.naturalWidth;
       canvas.height = currentImage.naturalHeight;
       ctx.drawImage(currentImage, 0, 0);
@@ -388,28 +453,25 @@ startBtn.addEventListener('click', async () => {
           const bx = Math.max(0, box.x - px), by = Math.max(0, box.y - py);
           const bw = Math.min(canvas.width - bx, box.w + px * 2);
           const bh = Math.min(canvas.height - by, box.h + py * 2);
-
-          ctx.save();
-          ctx.beginPath();
-          ctx.ellipse(bx + bw / 2, by + bh / 2, bw / 2, bh / 2, 0, 0, Math.PI * 2);
-          ctx.clip();
-          ctx.filter = `blur(${blurPx}px)`;
-          for (let j = 0; j < 5; j++) {
-            ctx.drawImage(currentImage, bx, by, bw, bh, bx, by, bw, bh);
-          }
-          ctx.filter = 'none';
-          ctx.restore();
+          // 使用优化后的模糊算法
+          applyBlurToRegion(ctx, currentImage, bx, by, bw, bh, blurPx);
         }
       }
       
-      const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.92));
+      // 输出格式保留：PNG 图片输出 PNG（保留透明通道），其余输出 JPEG
+      const isPng = item.file.type === 'image/png';
+      const outMime = isPng ? 'image/png' : 'image/jpeg';
+      const outQuality = isPng ? undefined : 0.92;
+      const blob = await new Promise(resolve => canvas.toBlob(resolve, outMime, outQuality));
       item.processedBlob = blob;
+      item.outExt = isPng ? 'png' : 'jpg';  // 保存扩展名供下载用
       
       if (currentImages.length === 1) {
-          faceBadge.textContent = item.faceCount > 0 ? `${item.faceCount} 张人脸` : '未检测到人脸';
+        faceBadge.textContent = item.faceCount > 0 ? `${item.faceCount} 张人脸` : '未检测到人脸';
       }
       
       previewImg.src = item.url;
+      setProgress(i + 1, currentImages.length);  // 完成一张，更新进度
     }
 
     if (currentImages.length > 1) {
@@ -417,17 +479,19 @@ startBtn.addEventListener('click', async () => {
       await new Promise(r => setTimeout(r, 60));
       for (let idx = 0; idx < currentImages.length; idx++) {
         const item = currentImages[idx];
-        const namePart = item.file.name.replace(/\.[^/.]+$/, "");
-        // prepend index to avoid overwriting files with the same name
-        zip.file(`${idx}_${namePart}_blurred.jpg`, item.processedBlob);
+        const namePart = item.file.name.replace(/\.[^/.]+$/, '');
+        const ext = item.outExt || 'jpg';  // 使用保存的扩展名
+        zip.file(`${idx}_${namePart}_blurred.${ext}`, item.processedBlob);
       }
       currentZipBlob = await zip.generateAsync({ type: 'blob' });
       const enginesArr = [...usedEngines];
       const engineNames = enginesArr.map(e => e === 'MP' ? 'MediaPipe' : 'SSD').join('+');
+      hideProgress();
       setStatus('success', `✓ 全部完成 (共处理 ${currentImages.length} 张，检出 ${totalFaces} 脸, via ${engineNames||'None'})`);
     } else {
       const enginesArr = [...usedEngines];
       const engineNames = enginesArr.map(e => e === 'MP' ? 'MediaPipe' : 'SSD').join('+');
+      hideProgress();
       if (totalFaces === 0) {
         setStatus('error', '未检测到人脸，输出原图');
       } else {
@@ -449,14 +513,19 @@ downloadBtn.addEventListener('click', () => {
   const link = document.createElement('a');
   
   if (currentImages.length === 1 && currentImages[0].processedBlob) {
-    link.download = `blurred_${ts}.jpg`;
+    const ext = currentImages[0].outExt || 'jpg';  // 保留原格式扩展名
+    link.download = `blurred_${ts}.${ext}`;
     link.href = URL.createObjectURL(currentImages[0].processedBlob);
   } else if (currentZipBlob) {
     link.download = `FaceBlur_Batch_${ts}.zip`;
     link.href = URL.createObjectURL(currentZipBlob);
   }
   
-  if(link.href) link.click();
+  if (link.href) {
+    link.click();
+    // 下载触发后释放临时 URL，防止内存泄漏
+    setTimeout(() => URL.revokeObjectURL(link.href), 60000);
+  }
 });
 
 loadModels();
